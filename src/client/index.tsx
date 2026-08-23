@@ -14,6 +14,7 @@ import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
   SettingsSectionProps, SlotsService, ThemeService, TimerContext, WorkspacesService,
 } from './contracts.ts'
+import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
 import { insertStyles } from './styles.ts'
@@ -68,7 +69,11 @@ export function apply(ctx: ClientContext): void {
   const theme = ctx.get('theme') as ThemeService | undefined
   const timers = ctx as ClientContext & TimerContext
 
-  const store = createStore()
+  // The arrangement is user-authored data, so it is restored as the store's
+  // seed and mirrored back on every change. Volatile fields stay at their
+  // defaults; a reload always opens on the top view.
+  const store = createStore(loadScene())
+  ctx.effect(() => persistScene(store), `${PLUGIN_ID}:persist`)
 
   ctx.effect(() => insertStyles(), `${PLUGIN_ID}:styles`)
   if (theme !== undefined) {
@@ -128,6 +133,25 @@ export function apply(ctx: ClientContext): void {
       const next = fitInto(store.get().layout, ids, DESKS, false)
       if (!sameGrid(next, store.get().layout)) store.set({ layout: next })
     }, [deskIdKey])
+
+    // Drop stored grids and labels for workspaces and sessions that are gone.
+    // Restored state can name ids that no longer exist, and without this the
+    // payload would keep every deleted workspace's board forever.
+    const sessionIdKey = Object.keys(notes).join(',')
+    useEffect(() => {
+      const current = store.get()
+      const pruned = pruneScene(
+        current.order,
+        current.labels,
+        deskIdKey === '' ? [] : deskIdKey.split(','),
+        sessionIdKey === '' ? [] : sessionIdKey.split(','),
+      )
+      // pruneScene returns the same references when nothing was stale, so this
+      // only writes when something actually changed.
+      if (pruned.order !== current.order || pruned.labels !== current.labels) {
+        store.set({ order: pruned.order, labels: pruned.labels })
+      }
+    }, [deskIdKey, sessionIdKey])
 
     const active = scene.active
     const activeDesk = active === null ? undefined : desks.find(d => d.id === active)

@@ -96,10 +96,13 @@ export interface Store {
 
 /**
  * Create the scene store.
+ * @param seed - restored fields merged over the defaults, so a reload keeps the
+ * user's arrangement. Volatile fields (mode, drag, modal, notice) are never
+ * seeded: a page load always starts at the top view with nothing in flight.
  * @returns a store seeded with the initial scene state.
  */
-export function createStore(): Store {
-  let state = INITIAL
+export function createStore(seed?: Partial<SceneState>): Store {
+  let state: SceneState = seed === undefined ? INITIAL : { ...INITIAL, ...seed }
   const listeners = new Set<Listener>()
   return {
     get: () => state,
