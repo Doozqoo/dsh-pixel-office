@@ -578,6 +578,8 @@ function Sticker(props: {
   readonly sessionId: string | null
   readonly note: NoteRecord | undefined
   readonly index: number
+  /** Whether this note is the one currently displayed on the monitor. */
+  readonly active: boolean
   readonly dragging: boolean
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void
@@ -590,10 +592,15 @@ function Sticker(props: {
   const phase = `${(hashIndex(props.sessionId, 19) * 0.137) % 2.6}s`
   return (
     <div
-      className={props.note?.running === true ? 'pxo-sticker run' : 'pxo-sticker'}
+      className={[
+        'pxo-sticker',
+        props.note?.running === true ? 'run' : '',
+        props.active ? 'is-open' : '',
+      ].filter(part => part !== '').join(' ')}
       role="button"
       tabIndex={0}
-      aria-label={`${props.label}，${props.note?.running === true ? '运行中' : '待机'}`}
+      aria-current={props.active ? 'true' : undefined}
+      aria-label={`${props.label}，${props.note?.running === true ? '运行中' : '待机'}${props.active ? '，正在显示器上打开' : ''}`}
       style={{
         background: color,
         animationDelay: phase,
@@ -815,6 +822,21 @@ export function DeskView(props: {
       <div className="pxo-band r" />
       <div className="pxo-bezel" />
 
+      {/* Standby screen. Occupies the monitor cutout whenever no note is open,
+          so an entered desk reads as a powered-down terminal rather than
+          showing whichever conversation the shell opened last. Only displayed
+          under [data-screen="off"] — the same gate that hides the conversation,
+          so the two can never be on screen together. */}
+      <div className="pxo-standby" aria-hidden="true">
+        <div className="pxo-standby-in">
+          <span className="ttl">NO SIGNAL</span>
+          <span className="sub">
+            {used === 0 ? '此工位暂无便利贴' : '选择一张便利贴以接入会话'}
+          </span>
+          <span className="cursor" />
+        </div>
+      </div>
+
       <div className="pxo-board">
         <div className="pxo-board-hd">
           <span>任务矩阵 / MISSION MATRIX</span>
@@ -857,6 +879,7 @@ export function DeskView(props: {
                   sessionId={sid}
                   note={note}
                   index={i}
+                  active={sid !== null && sid === scene.opened}
                   dragging={drag?.kind === 'sticker' && drag.pos === i && drag.moved}
                   label={sid === null ? '' : (scene.labels[sid] ?? note?.title ?? '')}
                   onPointerDown={(e) => { if (sid !== null) startDrag(e, { kind: 'sticker', pos: i, sid }) }}

@@ -30,6 +30,17 @@ export type Modal =
 export interface SceneState {
   readonly mode: Mode
   readonly active: string | null
+  /**
+   * The session the user picked on the current desk, or null for a dark screen.
+   *
+   * The conversation is the shell's own portaled slot: it keeps showing
+   * whichever session was opened last, and nothing about entering a desk
+   * changes that. Revealing it on desk mode alone therefore displayed the
+   * previous workspace's session on a desk that might have no notes at all.
+   * The monitor now only lights up while this names a session pinned to the
+   * active desk, so entering a desk always starts dark.
+   */
+  readonly opened: string | null
   readonly layout: Placement
   /** Display text per session id, overriding the session's own title. */
   readonly labels: Readonly<Record<string, string>>
@@ -72,6 +83,7 @@ export const DRAG_THRESHOLD = 6
 const INITIAL: SceneState = {
   mode: 'top',
   active: null,
+  opened: null,
   layout: new Array<string | null>(DESKS).fill(null),
   labels: {},
   order: {},

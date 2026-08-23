@@ -201,10 +201,16 @@ export function apply(ctx: ClientContext): void {
 
     const openSession = (sessionId: string) => {
       sessions?.open(sessionId)
+      // Records which note is on screen. The shell's conversation slot has no
+      // "closed" state to read, so the monitor's power is tracked here.
+      store.set({ opened: sessionId })
     }
 
     const enterDesk = (workspaceId: string) => {
-      store.set({ mode: 'desk', active: workspaceId, transition: 'entering', notice: '神经握手完成 / LINK ESTABLISHED' })
+      // `opened: null` is the fix for the cross-workspace bleed: the shell still
+      // holds the previously opened session, so without this the new desk lights
+      // up showing the old workspace's conversation.
+      store.set({ mode: 'desk', active: workspaceId, opened: null, transition: 'entering', notice: '神经握手完成 / LINK ESTABLISHED' })
       timers.timeout(() => {
         // Unconditional: a competing write to `transition` must not strand the
         // scene mid-animation. Only ever settles to the resting phase.
@@ -219,7 +225,7 @@ export function apply(ctx: ClientContext): void {
     // `both` fill left .pxo-fill collapsed at scaleY(0) — a black screen with
     // no way back.
     const leaveDesk = () => {
-      store.set({ mode: 'top', active: null, transition: 'entering', notice: null })
+      store.set({ mode: 'top', active: null, opened: null, transition: 'entering', notice: null })
       timers.timeout(() => {
         if (store.get().mode === 'top') store.set({ transition: 'idle' })
       }, 420)
@@ -275,10 +281,27 @@ export function apply(ctx: ClientContext): void {
       }
     }
 
+    // The monitor is powered only while the opened session is still pinned to
+    // the active desk. Validated against the live list rather than trusted, so
+    // tearing off the open note, or archiving it elsewhere, darkens the screen
+    // instead of leaving a conversation for a note that is no longer there.
+    const openedLive = scene.opened !== null
+      && activeDesk !== undefined
+      && activeDesk.sessionIds.includes(scene.opened)
+      && notes[scene.opened] !== undefined
+      && !archivedIds.includes(scene.opened)
+
+    useEffect(() => {
+      if (scene.opened !== null && !openedLive && store.get().mode === 'desk') {
+        store.set({ opened: null })
+      }
+    }, [scene.opened, openedLive])
+
     return (
       <div
         className="pxo-root"
         data-mode={scene.mode}
+        data-screen={openedLive ? 'on' : 'off'}
         data-intensity={scene.intensity}
         data-grid={scene.grid ? 'on' : 'off'}
         data-transition={scene.transition}

@@ -99,8 +99,14 @@ const SIDEBAR = '[data-slot="sidebar"]{'
  * ties the skin to a feature that's still spotty in older Safari/Webview builds.
  * The runtime guard in index.tsx removes the stylesheet when the plugin unmounts
  * — same scope, smaller blast radius.
+ *
+ * The reveal is gated on `data-screen="on"`, not on desk mode alone. The slot is
+ * the shell's own portal and keeps rendering whichever session was opened last,
+ * with no "closed" state to read: keying on the mode showed the previous
+ * workspace's conversation on a desk that might hold no notes at all.
  */
 const CONVERSATION = 'body:has(.pxo-root[data-mode="top"]) [data-slot="conversation"]{visibility:hidden!important;}'
+  + 'body:has(.pxo-root[data-screen="off"]) [data-slot="conversation"]{visibility:hidden!important;}'
   + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="details"]{display:none!important;}'
   + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"]{'
   + 'display:block!important;position:fixed!important;'
@@ -549,6 +555,33 @@ const BEZEL = '.pxo-bezel{position:fixed;left:var(--pxo-sx);top:var(--pxo-sy);'
   + 'background:var(--pxo-bg);padding:2px 6px;border:1px solid var(--pxo-edge);}'
 
 /* ----------------------------------------------------------------------------
+ * Standby screen: what the monitor shows before a note is picked.
+ *
+ * Shares the bezel's geometry vars so it fills the same cutout exactly, and
+ * sits between the conversation (40) and the bezel rim (45). Only drawn while
+ * the root carries `data-screen="off"`, which is also when the conversation is
+ * hidden — the two are mutually exclusive by construction.
+ * --------------------------------------------------------------------------*/
+const STANDBY = '.pxo-standby{position:fixed;left:var(--pxo-sx);top:var(--pxo-sy);'
+  + 'width:var(--pxo-sw);height:var(--pxo-sh);z-index:42;pointer-events:none;'
+  + 'display:none;align-items:center;justify-content:center;'
+  + 'background:var(--pxo-crt);'
+  // Faint scanline wash so the dark screen still reads as a powered CRT.
+  + 'background-image:repeating-linear-gradient(0deg,'
+  + 'rgba(92,255,158,.035) 0 1px,transparent 1px 3px);'
+  + 'box-shadow:inset 0 0 46px rgba(92,255,158,.06);}'
+  + '.pxo-root[data-screen="off"] .pxo-standby{display:flex;}'
+  + '.pxo-standby-in{display:flex;flex-direction:column;align-items:center;gap:10px;'
+  + 'text-align:center;padding:0 24px;}'
+  + '.pxo-standby .ttl{font-size:20px;font-weight:700;letter-spacing:6px;'
+  + 'color:var(--pxo-neon);opacity:.5;text-shadow:0 0 14px var(--pxo-glow);'
+  + 'animation:pxo-standby-dim 3.6s ease-in-out infinite;}'
+  + '.pxo-standby .sub{font-size:11px;letter-spacing:2px;color:var(--pxo-faint);}'
+  // Blinking block cursor, so the idle screen still feels alive.
+  + '.pxo-standby .cursor{width:8px;height:14px;background:var(--pxo-neon);opacity:.7;'
+  + 'animation:pxo-blink 1.1s steps(2) infinite;}'
+
+/* ----------------------------------------------------------------------------
  * Planning board: dark green slate with a neon frame and a 4x2 sticky grid.
  * --------------------------------------------------------------------------*/
 const BOARD = '.pxo-board{position:fixed;left:var(--pxo-bx);top:var(--pxo-sy);'
@@ -614,6 +647,14 @@ const STICKY = '.pxo-sticker{position:relative;'
   + 'background:rgba(0,0,0,.18);animation:pxo-curl 1.8s steps(3) infinite;}'
   + '.pxo-sticker.run{outline:3px solid var(--pxo-neon);outline-offset:-3px;'
   + 'box-shadow:0 0 14px var(--pxo-glow),3px 3px 0 rgba(0,0,0,.5);}'
+  // The note currently on the monitor. Cyan reads as "selected" against the
+  // green "running" outline, so a note can show both states at once: lifted and
+  // ringed, with a corner marker that does not depend on colour alone.
+  + '.pxo-sticker.is-open{outline:3px solid var(--pxo-cyan);outline-offset:-3px;'
+  + 'transform:translateY(-3px) rotate(0deg);'
+  + 'box-shadow:0 0 20px rgba(92,224,255,.5),4px 6px 0 rgba(0,0,0,.5);}'
+  + '.pxo-sticker.is-open::after{content:"▶";position:absolute;left:5px;bottom:3px;'
+  + 'font-size:9px;line-height:1;color:#0b2b33;opacity:.85;}'
 
 /* ----------------------------------------------------------------------------
  * "New stack" — a couple of mis-rotated sticky blocks the user drags onto
@@ -827,6 +868,9 @@ const MOTION = // Staggered desk arrival: each tile carries --pxo-i from the vie
   // The monitor cat is ambient too: CALM freezes the blink rather than hiding
   // the face, so a running desk keeps its detail without motion.
   + '.pxo-root[data-intensity="calm"] .pxo-art-monitor .pxo-catface .eye{animation:none;}'
+  // Standby screen: the wording still reads, it just stops pulsing.
+  + '.pxo-root[data-intensity="calm"] .pxo-standby .ttl,'
+  + '.pxo-root[data-intensity="calm"] .pxo-standby .cursor{animation:none;}'
   + '.pxo-root[data-intensity="calm"] .pxo-settings-hero::after{animation:none;}'
   + '.pxo-root[data-intensity="calm"] .pxo-logo-square{animation:none;}'
   // ── OVERDRIVE: push the ambient layers harder.
@@ -846,6 +890,8 @@ const MOTION = // Staggered desk arrival: each tile carries --pxo-i from the vie
  * --------------------------------------------------------------------------*/
 const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
   + '@keyframes pxo-flicker{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}'
+  // Standby title breathes very slightly, so a dark screen is not dead pixels.
+  + '@keyframes pxo-standby-dim{0%,100%{opacity:.5}50%{opacity:.26}}'
   // Blink: the eye squashes to a slit for two frames near the end of the cycle,
   // so it stays open most of the time. Stepped, so the lid snaps.
   + '@keyframes pxo-cat-blink{0%,92%{transform:scaleY(1)}'
@@ -903,7 +949,7 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
 export const CSS: string = [
   GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
-  DESK_CHROME, BEZEL, BOARD, STICKY, STACK, DIALOGS,
+  DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, STACK, DIALOGS,
   TOAST, SETTINGS, STATES, MOTION,
   KEYFRAMES,
 ].join('\n')
