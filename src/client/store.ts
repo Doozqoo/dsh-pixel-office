@@ -36,6 +36,32 @@ export interface SceneState {
   /** Note placement per workspace id. */
   readonly order: Readonly<Record<string, Placement>>
   readonly limit: number
+  /** User-facing cyberdeck intensity: calm keeps the look but trims ambient motion. */
+  readonly intensity: 'calm' | 'overdrive'
+  /** Whether the diegetic grid and terminal overlays are visible. */
+  readonly grid: boolean
+  /**
+   * Brief transition phase for cinematic desk entry/exit.
+   *
+   * Only ever 'entering' or 'idle'. There is deliberately no 'leaving': that
+   * phase deferred the mode switch behind a timer, and any competing store
+   * write inside the window stranded the scene collapsed and unreachable.
+   * Leaving now commits the mode immediately and animates the arriving view.
+   */
+  readonly transition: 'idle' | 'entering'
+  /**
+   * A slot reserved by an in-flight drop, until its session id exists.
+   *
+   * Creating a session is asynchronous, so the workspace list can publish the
+   * new id — and the reconcile effect can auto-place it in the lowest free
+   * cell — before the drop handler learns which id it created. Two writers
+   * then race for the same grid. While this is set for a workspace, the
+   * reconcile effect leaves that grid alone and the drop handler is the sole
+   * authority for it.
+   */
+  readonly pending: { readonly wsId: string; readonly pos: number } | null
+  /** Short-lived status or error message announced to assistive technology. */
+  readonly notice: string | null
   readonly drag: Drag | null
   readonly modal: Modal | null
 }
@@ -50,6 +76,11 @@ const INITIAL: SceneState = {
   labels: {},
   order: {},
   limit: 12,
+  intensity: 'overdrive',
+  grid: true,
+  transition: 'idle',
+  pending: null,
+  notice: null,
   drag: null,
   modal: null,
 }

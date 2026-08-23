@@ -8,17 +8,17 @@
  * shipped theme returns with no page reload.
  * @module dsh-client-pixel-office/client
  */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
-  ClientContext, Disposer, OverlayProps, SessionsService, SettingsSectionProps,
-  SlotsService, ThemeService, WorkspacesService,
+  ClientContext, Disposer, OverlayProps, SessionsService,
+  SettingsSectionProps, SlotsService, ThemeService, TimerContext, WorkspacesService,
 } from './contracts.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
 import { insertStyles } from './styles.ts'
 import { DARK_TOKENS, LIGHT_TOKENS, pairTokens } from './tokens.ts'
-import { DeskView, Dialogs, DragGhost, LimitControl, TopView, useScene } from './views.tsx'
+import { CyberSettings, DeskView, Dialogs, DragGhost, TopView, useScene } from './views.tsx'
 import type { DeskRecord, NoteRecord } from './views.tsx'
 
 /** Identifier used for slot registrations, the theme override, and log lines. */
@@ -66,6 +66,7 @@ export function apply(ctx: ClientContext): void {
   const workspaces = ctx.get('workspaces') as WorkspacesService | undefined
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
+  const timers = ctx as ClientContext & TimerContext
 
   const store = createStore()
 
@@ -73,12 +74,19 @@ export function apply(ctx: ClientContext): void {
   if (theme !== undefined) {
     ctx.effect(
       () => theme.overrideTokens(PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS)),
-      `${PLUGIN_ID}:tokens`,
+      `${PLUGIN_ID}:theme`,
     )
+  }
+
+  function Settings(_props: SettingsSectionProps): ReactNode {
+    return <CyberSettings store={store} />
   }
 
   function Scene(props: OverlayProps): ReactNode {
     const scene = useScene(store)
+    // Tick that bumps every time a new sticker is dropped on the planning
+    // board, so NewStickyStack can rotate its queue and animate the swap.
+    const [consumed, setConsumed] = useState(0)
 
     // Selectors project the live lists down to plain owned data before it
     // reaches component state. Live service objects must never be copied or
@@ -101,10 +109,17 @@ export function apply(ctx: ClientContext): void {
     for (const entry of noteEntries) if (entry !== null) notes[entry[0]] = entry[1]
 
     const running: Record<string, boolean> = {}
+    // Live note count per desk: exactly the sessions the task matrix would pin,
+    // so the tile agrees with the board. `sessionIds` alone counts archived
+    // sessions and ids the session list has not published, both of which the
+    // matrix omits — the tile claimed notes that were not there.
+    const liveCounts: Record<string, number> = {}
     for (const desk of desks) {
-      running[desk.id] = desk.sessionIds.some(
-        id => notes[id]?.running === true && !archivedIds.includes(id),
+      const live = desk.sessionIds.filter(
+        id => notes[id] !== undefined && !archivedIds.includes(id),
       )
+      liveCounts[desk.id] = live.length
+      running[desk.id] = live.some(id => notes[id]?.running === true)
     }
 
     const deskIdKey = desks.map(d => d.id).join(',')
@@ -122,13 +137,16 @@ export function apply(ctx: ClientContext): void {
 
     useEffect(() => {
       if (active === null) return
+      // A drop is mid-flight for this desk: the handler owns the grid until
+      // the new id lands, otherwise both writers place the same session.
+      if (store.get().pending?.wsId === active) return
       const current = store.get().order[active]
       const ids = liveKey === '' ? [] : liveKey.split(',')
       const next = fitInto(current, ids, store.get().limit, true)
       if (!sameGrid(next, current)) {
         store.set({ order: { ...store.get().order, [active]: next } })
       }
-    }, [liveKey, scene.limit, active])
+    }, [liveKey, scene.limit, active, scene.pending])
 
     // The active workspace can be deleted from another surface; fall back to
     // the top view rather than rendering a desk that no longer exists.
@@ -138,68 +156,139 @@ export function apply(ctx: ClientContext): void {
     }, [missing])
 
     const createWorkspace = async () => {
-      if (workspaces === undefined) return
-      const path = await workspaces.pickDirectory()
-      if (path === undefined || path === '') return
-      await workspaces.create({ path })
+      if (workspaces === undefined) {
+        store.set({ notice: '工作区服务离线 / WORKSPACE LINK OFFLINE' })
+        return
+      }
+      try {
+        store.set({ notice: '正在扫描本地目录… / SCANNING DIRECTORY' })
+        const path = await workspaces.pickDirectory()
+        if (path === null || path === '') {
+          store.set({ notice: null })
+          return
+        }
+        await workspaces.create({ path })
+        store.set({ notice: '神经链接已建立 / WORKSPACE LINKED' })
+      } catch (error) {
+        console.error(`${PLUGIN_ID}: workspace creation failed`, error)
+        store.set({ notice: '链接失败，请重试 / LINK FAILED' })
+      }
     }
 
     const openSession = (sessionId: string) => {
       sessions?.open(sessionId)
     }
 
+    const enterDesk = (workspaceId: string) => {
+      store.set({ mode: 'desk', active: workspaceId, transition: 'entering', notice: '神经握手完成 / LINK ESTABLISHED' })
+      timers.timeout(() => {
+        // Unconditional: a competing write to `transition` must not strand the
+        // scene mid-animation. Only ever settles to the resting phase.
+        if (store.get().mode === 'desk') store.set({ transition: 'idle' })
+      }, 520)
+    }
+
+    // Leaving is committed immediately and the exit animation plays over the
+    // outgoing view. Deferring the mode switch to a timer made the button look
+    // dead whenever another store write landed inside the 260ms window: the
+    // guard stopped matching, `mode` stayed 'desk', and `pxo-power-off`'s
+    // `both` fill left .pxo-fill collapsed at scaleY(0) — a black screen with
+    // no way back.
+    const leaveDesk = () => {
+      store.set({ mode: 'top', active: null, transition: 'entering', notice: null })
+      timers.timeout(() => {
+        if (store.get().mode === 'top') store.set({ transition: 'idle' })
+      }, 420)
+    }
+
+    const openSettings = () => {
+      if (!openShippedSettings()) {
+        console.error(`${PLUGIN_ID}: settings trigger not found`)
+      }
+    }
+
+    const clearWorkspace = (workspaceId: string) => {
+      const desk = desks.find(d => d.id === workspaceId)
+      store.set({ modal: { kind: 'clear', wsId: workspaceId, title: desk?.title ?? '' } })
+    }
+
     const addSession = async (pos: number, text: string) => {
-      store.set({ modal: null })
-      if (workspaces === undefined || activeDesk === undefined) return
-      const sid = await workspaces.connectWorkspace(activeDesk.id)
-      const labels = { ...store.get().labels }
-      if (text !== '') labels[sid] = text
-      const placed = (store.get().order[activeDesk.id] ?? []).slice()
-      while (placed.length < store.get().limit) placed.push(null)
-      if (!placed.includes(sid)) placed[pos] = sid
-      store.set({ labels, order: { ...store.get().order, [activeDesk.id]: placed } })
-      openSession(sid)
+      if (workspaces === undefined || activeDesk === undefined) {
+        store.set({ modal: null, notice: '会话链路不可用 / SESSION LINK OFFLINE' })
+        return
+      }
+      const wsId = activeDesk.id
+      // Claim the target cell BEFORE awaiting. The workspace list can publish
+      // the new session id while this promise is still pending, and the
+      // reconcile effect would then drop it into the lowest free cell; the
+      // handler's own `placed[pos] = sid` would afterwards land on top of an
+      // earlier note. The claim suspends that effect for this desk.
+      store.set({ modal: null, pending: { wsId, pos }, notice: '正在生成会话节点… / SPAWNING NODE' })
+      try {
+        const sid = await workspaces.connectWorkspace(wsId)
+        const labels = { ...store.get().labels }
+        if (text !== '') labels[sid] = text
+        // Re-read: the grid may legitimately have changed while awaiting.
+        const placed = (store.get().order[wsId] ?? []).slice()
+        while (placed.length < store.get().limit) placed.push(null)
+        // Drop anywhere the id already landed, then place it once, at the
+        // cell the user actually aimed at.
+        for (let i = 0; i < placed.length; i += 1) if (placed[i] === sid) placed[i] = null
+        const free = placed[pos] === null || placed[pos] === undefined
+        const target = free ? pos : placed.indexOf(null)
+        if (target >= 0) placed[target] = sid
+        store.set({
+          labels,
+          order: { ...store.get().order, [wsId]: placed },
+          pending: null,
+          notice: '会话节点已上线 / NODE ONLINE',
+        })
+        setConsumed(value => value + 1)
+        openSession(sid)
+      } catch (error) {
+        console.error(`${PLUGIN_ID}: session creation failed`, error)
+        store.set({ pending: null, notice: '节点生成失败 / SPAWN FAILED' })
+      }
     }
 
     return (
-      <div className="pxo-root" data-mode={scene.mode}>
+      <div
+        className="pxo-root"
+        data-mode={scene.mode}
+        data-intensity={scene.intensity}
+        data-grid={scene.grid ? 'on' : 'off'}
+        data-transition={scene.transition}
+      >
         {scene.mode === 'top'
           ? (
               <TopView
                 store={store}
                 desks={desks}
                 running={running}
+                liveCounts={liveCounts}
                 onCreate={() => { void createWorkspace() }}
+                onEnter={enterDesk}
+                onClear={clearWorkspace}
+                onSettings={openSettings}
               />
             )
           : activeDesk === undefined
             ? null
-            : <DeskView store={store} desk={activeDesk} notes={notes} onOpen={openSession} />}
-        <div className="pxo-hud">
-          {scene.mode === 'desk'
-            ? (
-                <button
-                  type="button"
-                  className="pxo-btn"
-                  onClick={() => { store.set({ mode: 'top', active: null }) }}
-                >
-                  ⏏ 离开工位
-                </button>
-              )
-            : null}
-          <button
-            type="button"
-            className="pxo-btn"
-            onClick={() => {
-              if (!openShippedSettings()) {
-                console.error(`${PLUGIN_ID}: settings trigger not found`)
-              }
-            }}
-          >
-            ⚙ 设置
-          </button>
-        </div>
+            : (
+                <DeskView
+                  store={store}
+                  desk={activeDesk}
+                  notes={notes}
+                  onOpen={openSession}
+                  onBack={leaveDesk}
+                  onSettings={openSettings}
+                  consumed={consumed}
+                />
+              )}
         <DragGhost store={store} notes={notes} />
+        {scene.notice === null
+          ? null
+          : <div className="pxo-toast" role="status" aria-live="polite"><span />{scene.notice}</div>}
         <Dialogs
           store={store}
           notes={notes}
@@ -211,50 +300,22 @@ export function apply(ctx: ClientContext): void {
     )
   }
 
-  function SettingsSection(props: SettingsSectionProps): ReactNode {
-    return (
-      <div className="pxo-root" style={{ pointerEvents: 'auto', padding: '4px 0' }}>
-        <h3 style={{ color: 'var(--pxo-neon)', fontSize: '13px', letterSpacing: '2px', margin: '0 0 8px' }}>
-          ◼ 像素工位
-        </h3>
-        <p style={{ color: 'var(--pxo-dim)', fontSize: '11px', lineHeight: 1.7, margin: '0 0 14px' }}>
-          便利贴上限决定计划板格子数；上限越大单张越小。系统始终保留一个空位用于挪动位置。
-        </p>
-        <LimitControl store={store} box={140} />
-        <div style={{ marginTop: '18px' }}>
-          <button
-            type="button"
-            className="pxo-btn"
-            onClick={() => {
-              store.set({ mode: 'top', active: null })
-              props.close()
-            }}
-          >
-            ⏏ 离开工位
-          </button>
-        </div>
-        <p className="pxo-note">
-          外观已适配亮色与暗色两套像素调色板；通用、模型、插件等分区均为原生设置，像素主题只重绘外观，功能不变。
-        </p>
-      </div>
-    )
-  }
-
   // `inject` defers each registration until the host slot is actually
   // declared, so apply order between this plugin and the shell surfaces does
   // not matter, and a collapsing declaration removes the contribution.
+  ctx.effect(
+    () => slots.inject('settings.section', () => slots.register(
+      { name: 'settings.section', id: PLUGIN_ID, order: 72, label: '赛博工位' },
+      Settings,
+    )) as Disposer,
+    `${PLUGIN_ID}:settings`,
+  )
+
   ctx.effect(
     () => slots.inject('shell.overlay', () => slots.register(
       { name: 'shell.overlay', id: PLUGIN_ID, order: 100 },
       Scene,
     )) as Disposer,
     `${PLUGIN_ID}:overlay`,
-  )
-  ctx.effect(
-    () => slots.inject('settings.section', () => slots.register(
-      { name: 'settings.section', id: PLUGIN_ID, order: 30, label: '像素工位' },
-      SettingsSection,
-    )) as Disposer,
-    `${PLUGIN_ID}:settings`,
   )
 }

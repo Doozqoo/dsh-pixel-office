@@ -4,11 +4,14 @@
  * @module dsh-client-pixel-office/placement
  */
 
-/** Desks in the top-down view: a 3x2 grid. */
-export const DESKS = 6
+/** Desks in the top-down view: a 6x4 grid (6 columns, 4 rows). */
+export const DESKS = 24
 
 /** Sticky-note paper colors, chosen per session id so a note keeps its color. */
-export const STICKER_COLORS = ['#f7e04a', '#7ef29d', '#8fd0ff', '#ff9ec7', '#ffb057'] as const
+export const STICKER_COLORS = ['#ffeda8', '#ffbacf', '#bdf7c7', '#bddbff', '#b0f2eb'] as const
+
+/** Neon accent colors, assigned per workspace id so each desk keeps its color. */
+export const ACCENTS = ['#5cff9e', '#5ce0ff', '#ffe35c', '#ff5cab', '#ff9e1c', '#6699ff'] as const
 
 /** One placement grid: an id per cell, or null for an empty cell. */
 export type Placement = readonly (string | null)[]
@@ -90,12 +93,5 @@ export function swapCells(grid: Placement, from: number, to: number): Placement 
   return next
 }
 
-/**
- * Board geometry for a note limit: the near-square grid that holds it.
- * @param limit - the configured maximum number of notes.
- * @returns column and row counts.
- */
-export function boardShape(limit: number): { columns: number; rows: number } {
-  const columns = Math.ceil(Math.sqrt(limit))
-  return { columns, rows: Math.ceil(limit / columns) }
-}
+/** Aspect ratio of one sticky note (width / height), used to size matrix cells. */
+export const NOTE_RATIO = 156 / 168
