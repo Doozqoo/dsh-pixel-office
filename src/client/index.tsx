@@ -17,7 +17,7 @@ import type {
 import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
-import { insertStyles } from './styles.ts'
+import { insertBaseStyles, insertStyles } from './styles.ts'
 import { DARK_TOKENS, LIGHT_TOKENS, pairTokens } from './tokens.ts'
 import { CyberSettings, DeskView, Dialogs, DragGhost, TopView, useScene } from './views.tsx'
 import type { DeskRecord, NoteRecord } from './views.tsx'
@@ -75,13 +75,47 @@ export function apply(ctx: ClientContext): void {
   const store = createStore(loadScene())
   ctx.effect(() => persistScene(store), `${PLUGIN_ID}:persist`)
 
-  ctx.effect(() => insertStyles(), `${PLUGIN_ID}:styles`)
-  if (theme !== undefined) {
-    ctx.effect(
-      () => theme.overrideTokens(PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS)),
-      `${PLUGIN_ID}:theme`,
-    )
-  }
+  // Always present, skin or not: it styles the master switch, which must stay
+  // usable exactly when the skin sheet is gone. Registered before the skin
+  // effect so its tag sits earlier in <head> and equal-specificity pixel rules
+  // win while the skin is on.
+  ctx.effect(() => insertBaseStyles(), `${PLUGIN_ID}:base-styles`)
+
+  /**
+   * Apply or remove the whole skin as `enabled` changes.
+   *
+   * The stylesheet and the token overrides cannot be plain `ctx.effect` calls
+   * any more: those run once at apply time, and the skin has to be switchable
+   * while the plugin stays loaded. So one fiber-owned effect subscribes to the
+   * store and holds the two inner disposers, adding and removing them in step
+   * with the flag. Turning the skin off runs exactly the same teardown that
+   * unloading the plugin does, which is why the shipped GUI comes back intact
+   * rather than merely being covered up.
+   */
+  ctx.effect(() => {
+    let applied: Disposer | null = null
+
+    const sync = (): void => {
+      const on = store.get().enabled
+      if (on && applied === null) {
+        const removeStyles = insertStyles()
+        const removeTokens = theme?.overrideTokens(
+          PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
+        )
+        applied = () => { removeStyles(); removeTokens?.() }
+      } else if (!on && applied !== null) {
+        applied()
+        applied = null
+      }
+    }
+
+    sync()
+    const unsubscribe = store.subscribe(sync)
+    return () => {
+      unsubscribe()
+      if (applied !== null) applied()
+    }
+  }, `${PLUGIN_ID}:skin`)
 
   function Settings(_props: SettingsSectionProps): ReactNode {
     return <CyberSettings store={store} />
@@ -296,6 +330,11 @@ export function apply(ctx: ClientContext): void {
         store.set({ opened: null })
       }
     }, [scene.opened, openedLive])
+
+    // Skin off: render nothing, so the shipped GUI is untouched rather than
+    // covered. Placed after every hook above — an early return before them
+    // would change the hook order between renders and crash React.
+    if (!scene.enabled) return null
 
     return (
       <div

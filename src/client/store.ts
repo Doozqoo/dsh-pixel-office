@@ -28,6 +28,15 @@ export type Modal =
 
 /** The complete scene state. */
 export interface SceneState {
+  /**
+   * Whether the pixel skin is applied at all.
+   *
+   * When false the plugin stays loaded but contributes no presentation: the
+   * stylesheet, the token overrides, and the scene overlay are all removed, so
+   * the shipped GUI returns exactly as it ships. The settings section stays
+   * registered either way — it is the way back on.
+   */
+  readonly enabled: boolean
   readonly mode: Mode
   readonly active: string | null
   /**
@@ -81,6 +90,7 @@ export interface SceneState {
 export const DRAG_THRESHOLD = 6
 
 const INITIAL: SceneState = {
+  enabled: true,
   mode: 'top',
   active: null,
   opened: null,

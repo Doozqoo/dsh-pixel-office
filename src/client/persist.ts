@@ -31,7 +31,7 @@ const STORAGE_KEY = 'dsh-pixel-office:scene:v1'
  * reflow every note past that point, before the measurement could correct it.
  */
 export type PersistedScene = Pick<
-  SceneState, 'layout' | 'order' | 'labels' | 'limit' | 'intensity' | 'grid'
+  SceneState, 'enabled' | 'layout' | 'order' | 'labels' | 'limit' | 'intensity' | 'grid'
 >
 
 /**
@@ -129,6 +129,9 @@ export function loadScene(): Partial<PersistedScene> | undefined {
     restored.intensity = source.intensity
   }
   if (typeof source.grid === 'boolean') restored.grid = source.grid
+  // Whether the skin is on must survive a reload, or turning it off would last
+  // only until the next refresh.
+  if (typeof source.enabled === 'boolean') restored.enabled = source.enabled
   return restored
 }
 
@@ -149,6 +152,7 @@ export function persistScene(store: Store): () => void {
     const state = store.get()
     if (
       last !== undefined
+      && last.enabled === state.enabled
       && last.layout === state.layout
       && last.order === state.order
       && last.labels === state.labels
@@ -158,6 +162,7 @@ export function persistScene(store: Store): () => void {
     ) return
 
     const snapshot: PersistedScene = {
+      enabled: state.enabled,
       layout: state.layout,
       order: state.order,
       labels: state.labels,

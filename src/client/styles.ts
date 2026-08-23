@@ -725,6 +725,45 @@ const TOAST = '.pxo-toast{position:fixed;left:50%;bottom:56px;z-index:95;pointer
   + 'box-shadow:0 0 10px var(--pxo-neon);animation:pxo-pulse 1.1s ease-in-out infinite;}'
 
 /* ----------------------------------------------------------------------------
+ * Master switch, styled independently of the skin.
+ *
+ * Everything else in this file lives in the sheet the switch removes, so with
+ * the skin bypassed those rules are gone and the section would render as raw
+ * unstyled markup — the one control the user needs to get back is the one that
+ * would look broken. These rules therefore ship in a separate always-present
+ * sheet and inherit the host's own theme tokens instead of the pixel palette,
+ * so the card looks native in both the shipped light and dark schemes.
+ * --------------------------------------------------------------------------*/
+const MASTER = '.pxo-set-master{padding:14px;border:1px solid var(--dsw-alias-border-l1,#8884);'
+  + 'border-radius:6px;display:flex;flex-direction:column;gap:10px;'
+  + 'background:var(--dsw-alias-bg-layer-2,transparent);'
+  + 'color:var(--dsw-alias-label-primary,inherit);font-family:inherit;}'
+  + '.pxo-set-master .pxo-set-row{display:flex;align-items:center;'
+  + 'justify-content:space-between;gap:12px;margin:0;font-size:13px;font-weight:600;'
+  + 'color:var(--dsw-alias-label-primary,inherit);}'
+  + '.pxo-set-master output{font-size:11px;letter-spacing:1px;'
+  + 'color:var(--dsw-alias-label-tertiary,inherit);'
+  + 'font-family:ui-monospace,monospace;}'
+  + '.pxo-set-master .pxo-toggle{display:inline-flex;align-items:center;gap:8px;'
+  + 'align-self:flex-start;width:auto;padding:7px 14px;cursor:pointer;font-size:12px;'
+  + 'font-family:inherit;letter-spacing:normal;border-radius:5px;'
+  + 'border:1px solid var(--dsw-alias-border-l2,#8886);'
+  + 'background:var(--dsw-alias-bg-layer-3,transparent);'
+  + 'color:var(--dsw-alias-label-primary,inherit);box-shadow:none;}'
+  + '.pxo-set-master .pxo-toggle:hover{'
+  + 'background:var(--dsw-alias-interactive-bg-hover,transparent);'
+  + 'border-color:var(--dsw-alias-border-l3,#888a);color:var(--dsw-alias-label-primary,inherit);}'
+  // Small state lamp inside the button: filled when engaged, hollow when not.
+  + '.pxo-set-master .pxo-toggle > span{width:9px;height:9px;flex:none;border-radius:50%;'
+  + 'background:transparent;box-shadow:inset 0 0 0 1.5px currentColor;opacity:.85;}'
+  + '.pxo-set-master .pxo-toggle[aria-pressed="true"] > span{background:currentColor;}'
+  + '.pxo-set-master .pxo-note{margin:0;font-size:11px;line-height:1.7;'
+  + 'letter-spacing:normal;color:var(--dsw-alias-label-secondary,inherit);}'
+
+/** Styles that must survive the skin being switched off. */
+export const BASE_CSS: string = MASTER
+
+/* ----------------------------------------------------------------------------
  * Settings section: hero, cards, segmented control, toggle.
  *
  * Also previously unstyled — the shipped settings panel is beige/dark per the
@@ -751,6 +790,29 @@ const SETTINGS = '.pxo-settings{display:flex;flex-direction:column;gap:14px;'
   + '.pxo-set-card{padding:14px;background:var(--pxo-bg2);'
   + 'box-shadow:inset 0 0 0 2px var(--pxo-edge),inset -3px -3px 0 rgba(0,0,0,.3),'
   + 'inset 3px 3px 0 rgba(255,255,255,.03);}'
+  // Re-skin the master card. Its own rules are two-class selectors that would
+  // otherwise outrank the generic pixel ones regardless of sheet order, leaving
+  // a native-looking control stranded in the middle of the pixel panel. These
+  // match that specificity so the switch joins the skin while the skin is on.
+  + '.pxo-set-master{border:0;border-radius:0;background:var(--pxo-bg2);'
+  + 'font-family:var(--pxo-font);color:var(--pxo-ink);}'
+  + '.pxo-set-master .pxo-set-row{color:var(--pxo-ink);font-size:11px;'
+  + 'font-weight:700;letter-spacing:2px;margin-bottom:0;}'
+  + '.pxo-set-master output{color:var(--pxo-neon);background:var(--pxo-crt);'
+  + 'font-family:var(--pxo-font);letter-spacing:2px;}'
+  + '.pxo-set-master .pxo-toggle{width:100%;border-radius:0;'
+  + 'font-family:var(--pxo-font);letter-spacing:2px;'
+  + 'background:var(--pxo-bg3);color:var(--pxo-ink);'
+  + 'border:0;box-shadow:inset 0 0 0 2px var(--pxo-edge);}'
+  + '.pxo-set-master .pxo-toggle:hover{background:var(--pxo-edge);color:var(--pxo-neon);'
+  + 'box-shadow:inset 0 0 0 2px var(--pxo-neon);}'
+  // Hand the knob back to the pixel slider: the base sheet shapes this span as
+  // a small round lamp, which outranks `.pxo-toggle > span` on specificity and
+  // would otherwise leave a dot where the sliding switch belongs.
+  + '.pxo-set-master .pxo-toggle > span{width:34px;height:16px;border-radius:0;'
+  + 'background:var(--pxo-crt);box-shadow:inset 0 0 0 2px var(--pxo-edge);opacity:1;}'
+  + '.pxo-set-master .pxo-toggle[aria-pressed="true"] > span{background:var(--pxo-crt);}'
+  + '.pxo-set-master .pxo-note{color:var(--pxo-dim);font-size:10px;letter-spacing:1px;}'
   + '.pxo-set-card .pxo-set-row{margin-bottom:10px;}'
   + '.pxo-set-card label,.pxo-set-card > .pxo-set-row > span{color:var(--pxo-ink);'
   + 'font-size:11px;font-weight:700;letter-spacing:2px;}'
@@ -958,17 +1020,41 @@ export const CSS: string = [
 const STYLE_MARKER = 'data-pixel-office'
 
 /**
- * Inject the stylesheet and return its disposer.
+ * Inject one style tag and return its disposer.
+ * @param css - stylesheet text to insert.
+ * @param variant - marker value, so the two sheets are told apart in devtools
+ * and each disposer removes exactly its own tag.
+ * @returns a disposer removing the injected tag.
+ */
+function insertSheet(css: string, variant: string): () => void {
+  const tag = document.createElement('style')
+  tag.setAttribute(STYLE_MARKER, variant)
+  tag.textContent = css
+  document.head.appendChild(tag)
+  return () => { tag.remove() }
+}
+
+/**
+ * Inject the always-present base sheet.
+ *
+ * Injected once for the plugin's whole lifetime, independently of the skin
+ * toggle: it styles the master switch, which has to stay usable precisely when
+ * the skin sheet is absent. Inserted before the skin sheet so equal-specificity
+ * pixel rules win while the skin is on.
+ * @returns a disposer removing the injected tag.
+ */
+export function insertBaseStyles(): () => void {
+  return insertSheet(BASE_CSS, 'base')
+}
+
+/**
+ * Inject the pixel skin stylesheet and return its disposer.
  *
  * A plugin-owned effect rather than a build-time side effect: the caller wires
- * it into the Cordis lifecycle so unloading the plugin removes the tag and
- * restores the shipped theme.
+ * it into the Cordis lifecycle so unloading the plugin — or switching the skin
+ * off — removes the tag and restores the shipped theme.
  * @returns a disposer removing the injected tag.
  */
 export function insertStyles(): () => void {
-  const tag = document.createElement('style')
-  tag.setAttribute(STYLE_MARKER, '')
-  tag.textContent = CSS
-  document.head.appendChild(tag)
-  return () => { tag.remove() }
+  return insertSheet(CSS, 'skin')
 }
