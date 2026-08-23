@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "composite": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "lib/types",
+    // Local relative imports carry their real `.ts`/`.tsx` extension, matching
+    // the deepseek-harness convention. Emit still needs to happen, so this
+    // pairs with `rewriteRelativeImportExtensions` rather than `noEmit`.
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

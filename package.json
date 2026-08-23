@@ -1,0 +1,55 @@
+{
+  "name": "dsh-client-pixel-office",
+  "version": "0.1.0",
+  "description": "Pixel Office: a digital/pixel-art workspace theme for the DSH web GUI — six top-down desks, a sticky-note planning board, and the real conversation embedded in a CRT monitor",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_USER/dsh-pixel-office.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -b && tsdown",
+    "typecheck": "tsc -b --force",
+    "clean": "node -e \"fs.rmSync('lib',{recursive:true,force:true})\""
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0",
+    "tsdown": "^0.15.6",
+    "typescript": "~5.9.2"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "README.md",
+    "LICENSE"
+  ]
+}

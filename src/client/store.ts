@@ -1,0 +1,104 @@
+/**
+ * Pixel Office scene store and pointer-drag state.
+ *
+ * A hand-rolled store rather than a dependency: the plugin needs one
+ * process-local object with subscribe/snapshot, and everything the browser
+ * bundle pulls in must be inlined (the shell's module table answers only the
+ * baseline specifiers), so an external store library would be dead weight.
+ * @module dsh-client-pixel-office/store
+ */
+import { DESKS, type Placement } from './placement.ts'
+
+/** Which view the scene is showing. */
+export type Mode = 'top' | 'desk'
+
+/** An in-flight pointer drag. */
+export type Drag =
+  | { kind: 'desk'; from: number; x: number; y: number; moved: boolean; over: number }
+  | { kind: 'sticker'; pos: number; sid: string; x: number; y: number; moved: boolean; over: number }
+  | { kind: 'stack'; x: number; y: number; moved: boolean; over: number }
+
+/** A dialog awaiting the user. */
+export type Modal =
+  | { kind: 'new'; pos: number }
+  | { kind: 'edit'; sid: string }
+  | { kind: 'full' }
+  | { kind: 'tear'; sid: string }
+  | { kind: 'clear'; wsId: string; title: string }
+
+/** The complete scene state. */
+export interface SceneState {
+  readonly mode: Mode
+  readonly active: string | null
+  readonly layout: Placement
+  /** Display text per session id, overriding the session's own title. */
+  readonly labels: Readonly<Record<string, string>>
+  /** Note placement per workspace id. */
+  readonly order: Readonly<Record<string, Placement>>
+  readonly limit: number
+  readonly drag: Drag | null
+  readonly modal: Modal | null
+}
+
+/** Movement in CSS pixels before a pointer press counts as a drag, not a click. */
+export const DRAG_THRESHOLD = 6
+
+const INITIAL: SceneState = {
+  mode: 'top',
+  active: null,
+  layout: new Array<string | null>(DESKS).fill(null),
+  labels: {},
+  order: {},
+  limit: 12,
+  drag: null,
+  modal: null,
+}
+
+type Listener = () => void
+
+/** Subscribable snapshot holder. */
+export interface Store {
+  get: () => SceneState
+  set: (patch: Partial<SceneState>) => void
+  subscribe: (listener: Listener) => () => void
+}
+
+/**
+ * Create the scene store.
+ * @returns a store seeded with the initial scene state.
+ */
+export function createStore(): Store {
+  let state = INITIAL
+  const listeners = new Set<Listener>()
+  return {
+    get: () => state,
+    set(patch) {
+      state = { ...state, ...patch }
+      for (const listener of listeners) listener()
+    },
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+  }
+}
+
+/**
+ * Locate the cell under a viewport point.
+ * @param registry - cell index to element, as populated by React refs.
+ * @param x - viewport x.
+ * @param y - viewport y.
+ * @returns the cell index, or -1 when the point is outside every cell.
+ */
+export function hitIndex(
+  registry: Readonly<Record<number, HTMLElement | null>>,
+  x: number,
+  y: number,
+): number {
+  for (const [key, element] of Object.entries(registry)) {
+    if (element === null || element === undefined) continue
+    const rect = element.getBoundingClientRect()
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return Number(key)
+  }
+  return -1
+}

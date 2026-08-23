@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # The browser half must resolve React through the shell's module table.
+      # Bundling a private copy gives the page a second React instance and
+      # every hook throws, so assert the artifact keeps React external.
+      - name: Verify React stays external
+        run: |
+          grep -q 'require("react")' lib/client.js \
+            || { echo 'lib/client.js does not require React externally'; exit 1; }
+
+      # The browser has neither of these; a surviving reference is a
+      # ReferenceError when the factory runs.
+      - name: Verify build-time substitution
+        run: |
+          ! grep -q 'process\.env' lib/client.js || { echo 'process.env leaked'; exit 1; }
+          ! grep -q 'import\.meta' lib/client.js || { echo 'import.meta leaked'; exit 1; }
+
+      # A default export alongside named apply/inject makes the Loader discard
+      # the function plugin's namespace, and the row contributes nothing.
+      - name: Verify plugin export shape
+        run: |
+          grep -q 'exports\.apply' lib/client.js || { echo 'apply not exported'; exit 1; }
+          grep -q 'exports\.inject' lib/client.js || { echo 'inject not exported'; exit 1; }
