@@ -267,7 +267,15 @@ export function apply(ctx: ClientContext): void {
       sessions?.open(sessionId)
       // Records which note is on screen. The shell's conversation slot has no
       // "closed" state to read, so the monitor's power is tracked here.
-      store.set({ opened: sessionId })
+      // Stamps the activity clock for this session too: the v2 features (sticker
+      // preview, cat state, desk lamp, today panel, standby thumbnails) all read
+      // `activity` to decide what to show. This is an approximation — opening a
+      // session is treated as "touched" — not a real event stream; a future
+      // build can replace it with the harness's own activity source.
+      store.set({
+        opened: sessionId,
+        activity: { ...store.get().activity, [sessionId]: Date.now() },
+      })
     }
 
     const enterDesk = (workspaceId: string) => {

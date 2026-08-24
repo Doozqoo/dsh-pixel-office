@@ -82,6 +82,17 @@ export interface SceneState {
   readonly pending: { readonly wsId: string; readonly pos: number } | null
   /** Short-lived status or error message announced to assistive technology. */
   readonly notice: string | null
+  /**
+   * Last-activity timestamp per session id (epoch ms).
+   *
+   * The approximate "this session was touched" signal the v2 features share:
+   * the sticker preview (A), the cat state machine (B), the desk lamp and the
+   * today panel (C), and the standby thumbnails (D) all read it. It is an
+   * approximation — `openSession()` stamps it — not a real event stream, and it
+   * is deliberately NOT persisted: it is volatile runtime state, so it stays
+   * out of {@link PersistedScene} and out of `localStorage`.
+   */
+  readonly activity: Readonly<Record<string, number>>
   readonly drag: Drag | null
   readonly modal: Modal | null
 }
@@ -103,6 +114,7 @@ const INITIAL: SceneState = {
   transition: 'idle',
   pending: null,
   notice: null,
+  activity: {},
   drag: null,
   modal: null,
 }
