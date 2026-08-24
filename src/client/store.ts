@@ -28,14 +28,7 @@ export type Modal =
 
 /** The complete scene state. */
 export interface SceneState {
-  /**
-   * Whether the pixel skin is applied at all.
-   *
-   * When false the plugin stays loaded but contributes no presentation: the
-   * stylesheet, the token overrides, and the scene overlay are all removed, so
-   * the shipped GUI returns exactly as it ships. The settings section stays
-   * registered either way — it is the way back on.
-   */
+  /** Whether the fixed pixel skin is active; always true in this plugin version. */
   readonly enabled: boolean
   readonly mode: Mode
   readonly active: string | null
@@ -136,12 +129,16 @@ export interface Store {
  * @returns a store seeded with the initial scene state.
  */
 export function createStore(seed?: Partial<SceneState>): Store {
-  let state: SceneState = seed === undefined ? INITIAL : { ...INITIAL, ...seed }
+  let state: SceneState = seed === undefined
+    ? INITIAL
+    : { ...INITIAL, ...seed, enabled: true, intensity: 'overdrive', grid: true }
   const listeners = new Set<Listener>()
   return {
     get: () => state,
     set(patch) {
-      state = { ...state, ...patch }
+      // Presentation options are intentionally fixed and cannot be changed by
+      // stale persisted data or any future caller of the store.
+      state = { ...state, ...patch, enabled: true, intensity: 'overdrive', grid: true }
       for (const listener of listeners) listener()
     },
     subscribe(listener) {

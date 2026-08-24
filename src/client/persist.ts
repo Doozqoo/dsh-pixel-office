@@ -31,7 +31,7 @@ const STORAGE_KEY = 'dsh-pixel-office:scene:v1'
  * reflow every note past that point, before the measurement could correct it.
  */
 export type PersistedScene = Pick<
-  SceneState, 'enabled' | 'layout' | 'order' | 'labels' | 'limit' | 'intensity' | 'grid'
+  SceneState, 'layout' | 'order' | 'labels' | 'limit'
 >
 
 /**
@@ -125,13 +125,6 @@ export function loadScene(): Partial<PersistedScene> | undefined {
     && source.limit > 0
     && source.limit <= 512
   ) restored.limit = source.limit
-  if (source.intensity === 'calm' || source.intensity === 'overdrive') {
-    restored.intensity = source.intensity
-  }
-  if (typeof source.grid === 'boolean') restored.grid = source.grid
-  // Whether the skin is on must survive a reload, or turning it off would last
-  // only until the next refresh.
-  if (typeof source.enabled === 'boolean') restored.enabled = source.enabled
   return restored
 }
 
@@ -139,9 +132,9 @@ export function loadScene(): Partial<PersistedScene> | undefined {
  * Mirror the arranged slice into storage whenever it changes.
  *
  * `store.set` fires on every pointer move during a drag, so the subscriber
- * first compares the five persisted fields by identity. The store merges
+ * first compares the four persisted fields by identity. The store merges
  * shallowly, so an untouched field keeps its reference and the common case
- * costs five comparisons and no serialization.
+ * costs four comparisons and no serialization.
  * @param store - the scene store to observe.
  * @returns a disposer that stops mirroring.
  */
@@ -152,23 +145,17 @@ export function persistScene(store: Store): () => void {
     const state = store.get()
     if (
       last !== undefined
-      && last.enabled === state.enabled
       && last.layout === state.layout
       && last.order === state.order
       && last.labels === state.labels
       && last.limit === state.limit
-      && last.intensity === state.intensity
-      && last.grid === state.grid
     ) return
 
     const snapshot: PersistedScene = {
-      enabled: state.enabled,
       layout: state.layout,
       order: state.order,
       labels: state.labels,
       limit: state.limit,
-      intensity: state.intensity,
-      grid: state.grid,
     }
     last = snapshot
     try {

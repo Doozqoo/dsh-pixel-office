@@ -1,10 +1,9 @@
 /**
  * Browser half of the Pixel Office plugin: reads the workspace and session
- * lists, registers the scene into `shell.overlay`, and adds its own section to
- * the shipped settings panel.
+ * lists and registers the scene into `shell.overlay`.
  *
  * Every side effect is owned by the Cordis fiber, so unloading the plugin
- * removes the stylesheet, the theme overrides, and both registrations, and the
+ * removes the stylesheet, theme overrides, and overlay registration, and the
  * shipped theme returns with no page reload.
  * @module dsh-client-pixel-office/client
  */
@@ -12,14 +11,14 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
-  SettingsSectionProps, SlotsService, ThemeService, WorkspacesService,
+  SlotsService, ThemeService, WorkspacesService,
 } from './contracts.ts'
 import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
-import { insertBaseStyles, insertStyles } from './styles.ts'
+import { insertStyles } from './styles.ts'
 import { DARK_TOKENS, LIGHT_TOKENS, pairTokens } from './tokens.ts'
-import { CyberSettings, DeskView, Dialogs, DragGhost, TopView, useScene } from './views.tsx'
+import { DeskView, Dialogs, DragGhost, TopView, useScene } from './views.tsx'
 import type { DeskRecord, NoteRecord } from './views.tsx'
 
 /** Identifier used for slot registrations, the theme override, and log lines. */
@@ -78,8 +77,8 @@ export function apply(ctx: ClientContext): void {
   // `timers.timeout is not a function` on every desk enter and leave.
   //
   // So the scene schedules through `window.setTimeout` and this effect owns
-  // every pending handle: unloading the plugin (or switching the skin off)
-  // cancels callbacks that would otherwise fire into a torn-down store.
+  // every pending handle: unloading the plugin cancels callbacks that would
+  // otherwise fire into a torn-down store.
   const pendingTimers = new Set<number>()
   ctx.effect(() => () => {
     for (const handle of pendingTimers) window.clearTimeout(handle)
@@ -105,51 +104,15 @@ export function apply(ctx: ClientContext): void {
   const store = createStore(loadScene())
   ctx.effect(() => persistScene(store), `${PLUGIN_ID}:persist`)
 
-  // Always present, skin or not: it styles the master switch, which must stay
-  // usable exactly when the skin sheet is gone. Registered before the skin
-  // effect so its tag sits earlier in <head> and equal-specificity pixel rules
-  // win while the skin is on.
-  ctx.effect(() => insertBaseStyles(), `${PLUGIN_ID}:base-styles`)
-
-  /**
-   * Apply or remove the whole skin as `enabled` changes.
-   *
-   * The stylesheet and the token overrides cannot be plain `ctx.effect` calls
-   * any more: those run once at apply time, and the skin has to be switchable
-   * while the plugin stays loaded. So one fiber-owned effect subscribes to the
-   * store and holds the two inner disposers, adding and removing them in step
-   * with the flag. Turning the skin off runs exactly the same teardown that
-   * unloading the plugin does, which is why the shipped GUI comes back intact
-   * rather than merely being covered up.
-   */
+  // The presentation is intentionally fixed: the plugin always contributes its
+  // stylesheet and token overrides for the lifetime of the Cordis fiber.
   ctx.effect(() => {
-    let applied: Disposer | null = null
-
-    const sync = (): void => {
-      const on = store.get().enabled
-      if (on && applied === null) {
-        const removeStyles = insertStyles()
-        const removeTokens = theme?.overrideTokens(
-          PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
-        )
-        applied = () => { removeStyles(); removeTokens?.() }
-      } else if (!on && applied !== null) {
-        applied()
-        applied = null
-      }
-    }
-
-    sync()
-    const unsubscribe = store.subscribe(sync)
-    return () => {
-      unsubscribe()
-      if (applied !== null) applied()
-    }
+    const removeStyles = insertStyles()
+    const removeTokens = theme?.overrideTokens(
+      PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
+    )
+    return () => { removeStyles(); removeTokens?.() }
   }, `${PLUGIN_ID}:skin`)
-
-  function Settings(_props: SettingsSectionProps): ReactNode {
-    return <CyberSettings store={store} />
-  }
 
   function Scene(props: OverlayProps): ReactNode {
     const scene = useScene(store)
@@ -427,14 +390,6 @@ export function apply(ctx: ClientContext): void {
   // `inject` defers each registration until the host slot is actually
   // declared, so apply order between this plugin and the shell surfaces does
   // not matter, and a collapsing declaration removes the contribution.
-  ctx.effect(
-    () => slots.inject('settings.section', () => slots.register(
-      { name: 'settings.section', id: PLUGIN_ID, order: 72, label: '赛博工位' },
-      Settings,
-    )) as Disposer,
-    `${PLUGIN_ID}:settings`,
-  )
-
   ctx.effect(
     () => slots.inject('shell.overlay', () => slots.register(
       { name: 'shell.overlay', id: PLUGIN_ID, order: 100 },

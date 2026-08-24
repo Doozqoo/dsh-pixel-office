@@ -93,8 +93,3 @@ export interface OverlayProps {
   readonly useSessions: SnapshotHook<SessionListState>
 }
 
-/** Owner props the shell passes to a `settings.section` occupant. */
-export interface SettingsSectionProps {
-  /** Closes the settings panel; the shell owns the open state. */
-  readonly close: () => void
-}
