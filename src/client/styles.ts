@@ -711,10 +711,18 @@ const DIALOGS = '.pxo-modal-bg{position:fixed;inset:0;z-index:90;pointer-events:
  * Toast: the transient status line the scene raises for workspace/session work.
  *
  * `views.tsx` has always rendered `.pxo-toast`, but no rule matched it, so every
- * notice was unstyled body text in the top-left corner. It is a bottom-centre
- * HUD strip with a neon leader block and a slide-in.
+ * notice was unstyled body text in the top-left corner. It is a bottom HUD
+ * strip with a neon leader block and a slide-in.
+ *
+ * It is offset to the RIGHT rather than centred. The new-note stack sits in the
+ * lower-left of the desk view (30px..150px tall) and centres its `→ DRAG →`
+ * column near 90px, so a centred strip at the original `bottom:56px` laid
+ * itself straight across that glyph row whenever a notice was up. Clearing the
+ * stack horizontally keeps the notice low in the frame; raising it above the
+ * dock instead pushed it far up into the scene.
  * --------------------------------------------------------------------------*/
-const TOAST = '.pxo-toast{position:fixed;left:50%;bottom:56px;z-index:95;pointer-events:none;'
+const TOAST = '.pxo-toast{position:fixed;left:74%;bottom:70px;'
+  + 'z-index:95;pointer-events:none;'
   + 'display:flex;align-items:center;gap:10px;padding:10px 18px 10px 14px;'
   + 'background:rgba(8,14,28,.92);color:var(--pxo-ink);font-size:11px;font-weight:700;'
   + 'letter-spacing:2px;white-space:nowrap;'
