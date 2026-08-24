@@ -32,7 +32,7 @@
 
 选择存在 `localStorage`，刷新后保持。皮肤关闭时，这张卡用宿主自己的主题 token 渲染，在原生亮色 / 暗色下都是原生外观。
 
-> 如果想彻底不加载这个插件，运行 `dsh plugin --profile web remove dsh-client-pixel-office` 并重启 `dsh web`；日常来回切换用上面的开关即可。
+> 如果想彻底不加载这个插件，运行 `npx @deepseek-ai/dsh plugin --profile web remove dsh-client-pixel-office` 并重启 `dsh web`；日常来回切换用上面的开关即可。
 
 便利贴容量不再是手调的数字：计划板会用 `ResizeObserver` 量自己的实际尺寸，铺满能放下的行列数，**始终保留一个空位**以便拖拽调整位置。1280×800 大约 12 格（可用 11），1920×1080 约 30 格，2560×1440 约 56 格；窗口变化时自动重排。
 
@@ -57,64 +57,56 @@
 
 ## 安装
 
-需要 Node.js 22+、pnpm，以及一个能运行 `dsh web` 的 DeepSeek Harness。Pixel Office 是标准的 DSH Profile Bundle；安装命令会同时安装软件包并把它的 `cordis.patch.yml` 加入 `web` Profile，不需要手工编辑 composition。
+Pixel Office 是标准的 DSH Profile Bundle。需要 Node.js 22+，并且需要一个可运行 `dsh web` 的 DeepSeek Harness。
 
-### 从 npm 安装
+### 推荐方式：npx
 
-发布到 npm 后运行：
+无需全局安装 CLI，直接运行：
 
-```sh
-dsh plugin --profile web add dsh-client-pixel-office
+```powershell
+npx @deepseek-ai/dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-### 从 GitHub 安装
+Git 依赖会在安装时运行 `prepare`，自动构建 `lib/index.js` 和 `lib/client.js`。如果 pnpm 提示 Git 构建脚本未获许可，请将命令输出的精确 `allowBuilds` 条目加入 Web Profile 的 `pnpm-workspace.yaml`，然后重新运行安装命令。
 
-```sh
+### 已安装 DSH CLI
+
+如果系统已经安装了 `@deepseek-ai/dsh`，可以使用简写命令：
+
+```powershell
 dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-Git 依赖会通过 `prepare` 构建 `lib/index.js` 和 `lib/client.js`。如果 pnpm 阻止依赖的构建脚本，请按命令输出的路径，在该 Profile 的 `pnpm-workspace.yaml` 中允许 `dsh-client-pixel-office` 构建，然后重新运行安装命令。
+如果使用 DeepSeek Harness 源码仓库，则从仓库根目录运行：
 
-### 本地开发安装
+```powershell
+pnpm dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
+```
 
-在插件仓库中先安装依赖并构建，再把当前目录链接到 Profile：
+### 本地开发
 
-```sh
+```powershell
 npm install
 npm run build
-dsh plugin --profile web add .
+npx @deepseek-ai/dsh plugin --profile web add .
 ```
 
 修改源码后重新运行 `npm run build`。插件注册表提供的是 `lib/client.js`，不是 `src/`。
 
 安装、升级或卸载后重启当前 `dsh web` 进程并刷新页面。当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
 
-### 从旧版手工配置迁移
-
-如果以前在 `~/.dsh/profiles/web/cordis.patch.yml` 手工加入过下面这段，先删除它：
-
-```yaml
-- insert:
-    - id: pixel-office
-      name: dsh-client-pixel-office
-```
-
-然后执行上面的安装命令。Bundle 自带同一配置项，保留旧配置会造成重复来源。
-
 ## 升级
 
-npm 安装：
-
-```sh
-dsh plugin --profile web update dsh-client-pixel-office
+```powershell
+npx @deepseek-ai/dsh plugin --profile web update dsh-client-pixel-office
 ```
 
-GitHub 安装可重新运行对应的 `add` 命令，或者让 pnpm 更新锁定的 Git revision。
+GitHub 安装可重新运行 `add` 命令，pnpm 会更新锁定的 Git revision。
 
 ## 卸载
 
-```sh
-dsh plugin --profile web remove dsh-client-pixel-office
+```powershell
+npx @deepseek-ai/dsh plugin --profile web remove dsh-client-pixel-office
 ```
 
 该命令会删除 Profile 依赖并从 Bundle layer 列表移除 Pixel Office。重启 `dsh web` 后，Cordis 会撤销插件持有的样式表、主题覆盖和 slot 注册，原生界面完整恢复。浏览器 `localStorage` 中的布局偏好默认保留，方便以后重装；需要清除数据时再通过浏览器站点数据管理删除。
