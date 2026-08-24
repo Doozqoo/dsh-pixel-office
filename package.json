@@ -31,10 +31,14 @@
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-settings"
       ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
   },
   "scripts": {
     "build": "tsc -b && tsdown",
+    "prepare": "npm run build",
     "typecheck": "tsc -b --force",
     "clean": "node -e \"fs.rmSync('lib',{recursive:true,force:true})\""
   },
@@ -49,6 +53,7 @@
     "lib/client.js",
     "lib/client.js.map",
     "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
     "src/**/*.ts",
     "src/**/*.tsx",
     "README.md",

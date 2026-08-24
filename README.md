@@ -32,7 +32,7 @@
 
 选择存在 `localStorage`，刷新后保持。皮肤关闭时，这张卡用宿主自己的主题 token 渲染，在原生亮色 / 暗色下都是原生外观。
 
-> 如果想彻底不加载这个插件，就从 `~/.dsh/profiles/web/cordis.patch.yml` 里注释掉那一行——但日常来回切换用上面的开关就够了。
+> 如果想彻底不加载这个插件，运行 `dsh plugin --profile web remove dsh-client-pixel-office` 并重启 `dsh web`；日常来回切换用上面的开关即可。
 
 便利贴容量不再是手调的数字：计划板会用 `ResizeObserver` 量自己的实际尺寸，铺满能放下的行列数，**始终保留一个空位**以便拖拽调整位置。1280×800 大约 12 格（可用 11），1920×1080 约 30 格，2560×1440 约 56 格；窗口变化时自动重排。
 
@@ -57,43 +57,67 @@
 
 ## 安装
 
-需要一个能跑 `dsh web` 的 DeepSeek Harness。
+需要 Node.js 22+、pnpm，以及一个能运行 `dsh web` 的 DeepSeek Harness。Pixel Office 是标准的 DSH Profile Bundle；安装命令会同时安装软件包并把它的 `cordis.patch.yml` 加入 `web` Profile，不需要手工编辑 composition。
+
+### 从 npm 安装
+
+发布到 npm 后运行：
 
 ```sh
-git clone https://github.com/Doozqoo/dsh-pixel-office.git
-cd dsh-pixel-office
-npm install
-npm run build
+dsh plugin --profile web add dsh-client-pixel-office
 ```
 
-构建产出两个产物，两个都必需：
+### 从 GitHub 安装
 
-- `lib/index.js` — node 半边，host Loader 导入这一行来读取插件
-- `lib/client.js` — 浏览器半边，插件注册表通过 HTTP 提供给页面
+```sh
+dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
+```
 
-然后把它加进你的 composition。浏览器 roster 是**扫描 host Loader 已加载的行**得来的（不是扫某个目录），所以装载方式就是加一行指向这个包：
+Git 依赖会通过 `prepare` 构建 `lib/index.js` 和 `lib/client.js`。如果 pnpm 阻止依赖的构建脚本，请按命令输出的路径，在该 Profile 的 `pnpm-workspace.yaml` 中允许 `dsh-client-pixel-office` 构建，然后重新运行安装命令。
+
+### 本地开发安装
+
+在插件仓库中先安装依赖并构建，再把当前目录链接到 Profile：
+
+```sh
+npm install
+npm run build
+dsh plugin --profile web add .
+```
+
+修改源码后重新运行 `npm run build`。插件注册表提供的是 `lib/client.js`，不是 `src/`。
+
+安装、升级或卸载后重启当前 `dsh web` 进程并刷新页面。当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
+
+### 从旧版手工配置迁移
+
+如果以前在 `~/.dsh/profiles/web/cordis.patch.yml` 手工加入过下面这段，先删除它：
 
 ```yaml
-# 你的 cordis.yml 或 bundle 的 cordis.patch.yml
 - insert:
     - id: pixel-office
       name: dsh-client-pixel-office
 ```
 
-行名要能被 Node 解析到。本地开发最省事的是链接进去：
+然后执行上面的安装命令。Bundle 自带同一配置项，保留旧配置会造成重复来源。
+
+## 升级
+
+npm 安装：
 
 ```sh
-npm link                                   # 在本仓库
-cd /path/to/your-harness && npm link dsh-client-pixel-office
+dsh plugin --profile web update dsh-client-pixel-office
 ```
 
-重启 `dsh web` 后刷新页面。插件被 Loader 加载后，`dsh.client` 声明会被扫到，`lib/client.js` 随之送到浏览器。
-
-> 改完源码要重新 `npm run build`：注册表提供的是 `lib/client.js`，不是 `src/`。
+GitHub 安装可重新运行对应的 `add` 命令，或者让 pnpm 更新锁定的 Git revision。
 
 ## 卸载
 
-从 composition 里删掉那一行并重启。插件的每个副作用都挂在 Cordis fiber 上——样式表、主题覆盖、两处 slot 注册——所以卸载后原生主题完整回归，不残留任何东西。
+```sh
+dsh plugin --profile web remove dsh-client-pixel-office
+```
+
+该命令会删除 Profile 依赖并从 Bundle layer 列表移除 Pixel Office。重启 `dsh web` 后，Cordis 会撤销插件持有的样式表、主题覆盖和 slot 注册，原生界面完整恢复。浏览器 `localStorage` 中的布局偏好默认保留，方便以后重装；需要清除数据时再通过浏览器站点数据管理删除。
 
 ## 三个不显然的实现决定
 

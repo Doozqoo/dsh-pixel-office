@@ -45,3 +45,16 @@ jobs:
         run: |
           grep -q 'exports\.apply' lib/client.js || { echo 'apply not exported'; exit 1; }
           grep -q 'exports\.inject' lib/client.js || { echo 'inject not exported'; exit 1; }
+      # The publish view is what `dsh plugin add` installs. It must carry both
+      # runtime halves and the Bundle patch that inserts the Loader row.
+      - name: Verify publish contents
+        run: |
+          npm pack --dry-run --json > pack.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const [{ files }] = JSON.parse(fs.readFileSync("pack.json", "utf8"));
+            const names = new Set(files.map(({ path }) => path));
+            for (const required of ["lib/index.js", "lib/client.js", "cordis.patch.yml"]) {
+              if (!names.has(required)) throw new Error(`publish artifact missing ${required}`);
+            }
+          '

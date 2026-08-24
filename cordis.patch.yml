@@ -1,0 +1,6 @@
+# Pixel Office profile layer. DSH applies this patch when the package is
+# installed with `dsh plugin --profile web add ...` and removes the layer when
+# the package is removed.
+- insert:
+    - id: pixel-office
+      name: dsh-client-pixel-office
