@@ -657,6 +657,44 @@ const STICKY = '.pxo-sticker{position:relative;'
   + 'font-size:9px;line-height:1;color:#0b2b33;opacity:.85;}'
 
 /* ----------------------------------------------------------------------------
+ * Sticker hover preview (Feature A): the read-only summary card.
+ * --------------------------------------------------------------------------*/
+const PREVIEW = '.pxo-preview{position:fixed;z-index:75;pointer-events:auto;'
+  + 'background:var(--pxo-bg2);color:var(--pxo-ink);padding:12px 13px 11px;'
+  + 'box-shadow:inset -3px -3px 0 var(--pxo-edge),inset 3px 3px 0 var(--pxo-line),'
+  + '0 0 0 2px var(--pxo-edge),0 0 28px var(--pxo-glow),6px 6px 0 rgba(0,0,0,.5);'
+  + 'animation:pxo-preview-in .16s cubic-bezier(.16,1.1,.3,1) both;}'
+  + '.pxo-preview.closing{animation:pxo-preview-out .1s steps(2) both;}'
+  + '.pxo-preview-hd{display:flex;align-items:baseline;justify-content:space-between;'
+  + 'gap:8px;border-bottom:1px solid var(--pxo-edge);padding-bottom:7px;margin-bottom:8px;}'
+  + '.pxo-preview-title{font-size:13px;font-weight:700;letter-spacing:1px;color:var(--pxo-ink);'
+  + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'
+  + '.pxo-preview-node{font-size:9px;letter-spacing:2px;color:var(--pxo-faint);flex:none;}'
+  + '.pxo-preview-status{display:flex;align-items:center;gap:6px;font-size:10px;'
+  + 'letter-spacing:1px;color:var(--pxo-dim);font-weight:700;}'
+  + '.pxo-preview-status .dot{width:7px;height:7px;}'
+  + '.pxo-preview-status .dot.run{background:var(--pxo-neon);box-shadow:0 0 6px var(--pxo-neon);}'
+  + '.pxo-preview-status .dot.idle{background:var(--pxo-yellow);}'
+  + '.pxo-preview-time{font-size:10px;letter-spacing:1px;color:var(--pxo-faint);margin-top:5px;}'
+  // The message body is a placeholder: the session service does not expose
+  // message contents to the plugin, so per the v2 handoff the preview degrades
+  // to title + running state + time + note meta (§2.3). A faux transcript keeps
+  // the card reading like a real preview rather than an empty box.
+  + '.pxo-preview-msg{margin-top:9px;padding:8px;background:var(--pxo-crt);'
+  + 'box-shadow:inset 0 0 0 1px var(--pxo-edge);display:flex;flex-direction:column;gap:5px;}'
+  + '.pxo-preview-msg .ln{height:5px;background:var(--pxo-line);opacity:.7;}'
+  + '.pxo-preview-msg .ln.short{width:60%;}'
+  + '.pxo-preview-msg .ph{margin-top:3px;font-size:9px;letter-spacing:1px;'
+  + 'color:var(--pxo-faint);font-style:italic;}'
+  + '.pxo-preview-actions{display:flex;gap:6px;margin-top:10px;}'
+  + '.pxo-btn-pv{flex:1;padding:6px 4px;font-size:10px;font-weight:700;letter-spacing:1px;'
+  + 'background:var(--pxo-bg3);color:var(--pxo-ink);border:1px solid var(--pxo-edge);'
+  + 'cursor:pointer;text-align:center;}'
+  + '.pxo-btn-pv:hover{color:var(--pxo-neon);border-color:var(--pxo-neon);}'
+  + '.pxo-btn-pv.open{background:var(--pxo-neon);color:var(--pxo-bg);border-color:var(--pxo-neon);}'
+  + '.pxo-btn-pv.open:hover{color:var(--pxo-bg);filter:brightness(1.12);}'
+
+/* ----------------------------------------------------------------------------
  * "New stack" — a couple of mis-rotated sticky blocks the user drags onto
  * empty slots to spawn a new session.
  * --------------------------------------------------------------------------*/
@@ -1014,12 +1052,17 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
   + '50%{transform:translateX(320%) rotate(18deg)}}'
   + '@keyframes pxo-logo-hum{0%,100%{box-shadow:0 0 0 1px var(--pxo-edge),0 0 12px var(--pxo-glow)}'
   + '50%{box-shadow:0 0 0 1px var(--pxo-edge),0 0 22px var(--pxo-neon)}}'
+  // Sticker hover preview: slide in from the sticker, slide out on exit.
+  + '@keyframes pxo-preview-in{0%{opacity:0;transform:translateX(-6px)}'
+  + '100%{opacity:1;transform:translateX(0)}}'
+  + '@keyframes pxo-preview-out{0%{opacity:1;transform:translateX(0)}'
+  + '100%{opacity:0;transform:translateX(-6px)}}'
 
 /** The complete stylesheet text. */
 export const CSS: string = [
   GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
-  DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, STACK, DIALOGS,
+  DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, PREVIEW, STACK, DIALOGS,
   TOAST, SETTINGS, STATES, MOTION,
   KEYFRAMES,
 ].join('\n')

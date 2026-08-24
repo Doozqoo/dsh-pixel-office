@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, hashIndex, swapCells } from './placement.ts'
+import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, formatRelative, hashIndex, swapCells } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 
@@ -573,6 +573,81 @@ export function TopView(props: {
  * Desk-view: planning board on the left, CRT-cutout monitor on the right.
  * ===========================================================================*/
 
+/**
+ * The lightweight summary card shown when a planning-board note is hovered.
+ *
+ * Read-only: it surfaces the note's title, live status, last-activity time, and
+ * a few quick actions, but never changes any existing interaction. The message
+ * body is a placeholder — the DSH session service does not currently expose
+ * message contents to the plugin, so per the v2 spec the preview degrades to
+ * title + running state + time + note meta (see docs handoff §2.3).
+ * @param rect - the hovered sticker's viewport rect, for anchoring.
+ * @param title - display title (label override or session title).
+ * @param running - whether the session is streaming.
+ * @param lastActivity - last-activity epoch ms, or undefined.
+ * @param nodeIndex - 0-based slot index, for the "NODE NN" glyph.
+ * @param onOpen - open the session on the monitor.
+ * @param onEdit - open the existing edit modal for this note.
+ * @param onTear - open the existing tear modal for this note.
+ * @param onEnter - pointer entered the card; keep it open.
+ * @param onLeave - pointer left the card; schedule hide.
+ */
+function StickerPreview(props: {
+  readonly rect: DOMRect
+  readonly title: string
+  readonly running: boolean
+  readonly lastActivity: number | undefined
+  readonly nodeIndex: number
+  readonly onOpen: () => void
+  readonly onEdit: () => void
+  readonly onTear: () => void
+  readonly onEnter: () => void
+  readonly onLeave: () => void
+  /** When true, the card plays its 100ms exit transition before unmount. */
+  readonly closing: boolean
+}): ReactNode {
+  const CARD_W = 268
+  // Anchor to the sticker's top-right; flip to the left near the right edge so
+  // the card never runs off-screen. The card is position:fixed (anchored to the
+  // viewport via the sticker's rect) and lives outside the board's overflow, so
+  // it is never clipped.
+  let left = props.rect.right + 10
+  if (left + CARD_W > window.innerWidth - 12) left = props.rect.left - CARD_W - 10
+  if (left < 12) left = 12
+  let top = props.rect.top
+  if (top < 64) top = 64
+  const status = props.running
+    ? <><span className="dot run" /> 运行中 · UPLINK ACTIVE</>
+    : <><span className="dot idle" /> 待机 · UPLINK IDLE</>
+  return (
+    <div
+      className={props.closing ? 'pxo-preview closing' : 'pxo-preview'}
+      aria-label={`${props.title} 预览`}
+      style={{ left: `${left}px`, top: `${top}px`, width: `${CARD_W}px` }}
+      onPointerEnter={props.onEnter}
+      onPointerLeave={props.onLeave}
+    >
+      <div className="pxo-preview-hd">
+        <span className="pxo-preview-title">{props.title}</span>
+        <span className="pxo-preview-node">NODE {String(props.nodeIndex + 1).padStart(2, '0')}</span>
+      </div>
+      <div className="pxo-preview-status">{status}</div>
+      <div className="pxo-preview-time">最近活动 · {formatRelative(props.lastActivity, Date.now())}</div>
+      <div className="pxo-preview-msg" aria-hidden="true">
+        <span className="ln" />
+        <span className="ln" />
+        <span className="ln short" />
+        <span className="ph">— 消息内容需 DSH 会话服务暴露 —</span>
+      </div>
+      <div className="pxo-preview-actions">
+        <button type="button" className="pxo-btn-pv open" onClick={props.onOpen}>▶ 打开会话</button>
+        <button type="button" className="pxo-btn-pv" onClick={props.onEdit}>✎ 编辑</button>
+        <button type="button" className="pxo-btn-pv" onClick={props.onTear}>✂ 撕下</button>
+      </div>
+    </div>
+  )
+}
+
 /** One sticky note. */
 function Sticker(props: {
   readonly sessionId: string | null
@@ -585,6 +660,8 @@ function Sticker(props: {
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onOpen: () => void
+  readonly onPreviewEnter: (sid: string, el: HTMLElement) => void
+  readonly onPreviewLeave: () => void
   readonly label: string
 }): ReactNode {
   if (props.sessionId === null) return null
@@ -610,6 +687,8 @@ function Sticker(props: {
       onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp}
       onPointerCancel={props.onPointerUp}
+      onPointerEnter={(event) => { props.onPreviewEnter(props.sessionId as string, event.currentTarget) }}
+      onPointerLeave={props.onPreviewLeave}
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
@@ -733,6 +812,43 @@ export function DeskView(props: {
   const { store, desk, notes } = props
   const scene = useScene(store)
   const limit = scene.limit
+
+  // ── Sticker hover preview (Feature A).
+  // Two debounce timers, both tracked for cleanup: a 150ms show delay and a
+  // 100ms exit delay. The exit delay is what stops the card from flickering
+  // when the pointer sweeps across several notes; re-entering cancels it.
+  // While a drag is in flight the preview is suppressed entirely.
+  const [preview, setPreview] = useState<{ sid: string; rect: DOMRect } | null>(null)
+  const [previewClosing, setPreviewClosing] = useState(false)
+  const previewShow = useRef<number | null>(null)
+  const previewHide = useRef<number | null>(null)
+  const clearPreviewTimers = (): void => {
+    if (previewShow.current !== null) { window.clearTimeout(previewShow.current); previewShow.current = null }
+    if (previewHide.current !== null) { window.clearTimeout(previewHide.current); previewHide.current = null }
+  }
+  useEffect(() => () => { clearPreviewTimers() }, [])
+  const schedulePreview = (sid: string, el: HTMLElement): void => {
+    if (store.get().drag !== null) return
+    clearPreviewTimers()
+    previewShow.current = window.setTimeout(() => {
+      setPreviewClosing(false)
+      setPreview({ sid, rect: el.getBoundingClientRect() })
+    }, 150)
+  }
+  const cancelPreview = (): void => {
+    if (previewShow.current !== null) { window.clearTimeout(previewShow.current); previewShow.current = null }
+    if (preview === null) return
+    setPreviewClosing(true)
+    previewHide.current = window.setTimeout(() => {
+      setPreview(null)
+      setPreviewClosing(false)
+    }, 100)
+  }
+  const keepPreview = (): void => {
+    if (previewHide.current !== null) { window.clearTimeout(previewHide.current); previewHide.current = null }
+    setPreviewClosing(false)
+  }
+  const hidePreviewNow = (): void => { clearPreviewTimers(); setPreview(null); setPreviewClosing(false) }
   // The grid fills the slate: the element is measured and drawn with exactly
   // as many whole cells as fit, so the board reads as a full pinboard instead
   // of a short row floating in empty space.
@@ -764,6 +880,9 @@ export function DeskView(props: {
   ) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     store.set({ drag: { ...payload, x: e.clientX, y: e.clientY, moved: false, over: -1 } })
+    // A drag takes over the pointer, so any preview must clear immediately
+    // rather than lingering at the cursor.
+    hidePreviewNow()
   }
   const moveDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     const current = store.get().drag
@@ -885,7 +1004,9 @@ export function DeskView(props: {
                   onPointerDown={(e) => { if (sid !== null) startDrag(e, { kind: 'sticker', pos: i, sid }) }}
                   onPointerMove={moveDrag}
                   onPointerUp={endDrag}
-                  onOpen={() => { if (sid !== null) props.onOpen(sid) }}
+                  onPreviewEnter={schedulePreview}
+                  onPreviewLeave={cancelPreview}
+                  onOpen={() => { hidePreviewNow(); if (sid !== null) props.onOpen(sid) }}
                 />
               </div>
             )
@@ -901,6 +1022,27 @@ export function DeskView(props: {
       />
 
       <div className="pxo-scan" />
+
+      {preview === null ? null : (() => {
+        const sid = preview.sid
+        const note = notes[sid]
+        const label = scene.labels[sid] ?? note?.title ?? ''
+        return (
+          <StickerPreview
+            rect={preview.rect}
+            title={label}
+            running={note?.running === true}
+            lastActivity={scene.activity[sid]}
+            nodeIndex={order.indexOf(sid)}
+            closing={previewClosing}
+            onOpen={() => { hidePreviewNow(); props.onOpen(sid) }}
+            onEdit={() => { hidePreviewNow(); store.set({ modal: { kind: 'edit', sid } }) }}
+            onTear={() => { hidePreviewNow(); store.set({ modal: { kind: 'tear', sid } }) }}
+            onEnter={keepPreview}
+            onLeave={cancelPreview}
+          />
+        )
+      })()}
     </div>
   )
 }
