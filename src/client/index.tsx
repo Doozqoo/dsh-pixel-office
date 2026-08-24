@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
-  SettingsSectionProps, SlotsService, ThemeService, TimerContext, WorkspacesService,
+  SettingsSectionProps, SlotsService, ThemeService, WorkspacesService,
 } from './contracts.ts'
 import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
@@ -67,7 +67,37 @@ export function apply(ctx: ClientContext): void {
   const workspaces = ctx.get('workspaces') as WorkspacesService | undefined
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
-  const timers = ctx as ClientContext & TimerContext
+
+  // Deferred transition settles, owned by the fiber.
+  //
+  // NOT `ctx.timeout`: that method is mixed in by the Timer plugin
+  // (`@deepseek-ai/cordis-plugin-timer`), which the web composition does not
+  // mount on the browser side — the shipped roster has no timer row and the
+  // Cordis core carries no `timeout` of its own. Casting `ctx` to a
+  // timer-shaped type compiled fine and then threw
+  // `timers.timeout is not a function` on every desk enter and leave.
+  //
+  // So the scene schedules through `window.setTimeout` and this effect owns
+  // every pending handle: unloading the plugin (or switching the skin off)
+  // cancels callbacks that would otherwise fire into a torn-down store.
+  const pendingTimers = new Set<number>()
+  ctx.effect(() => () => {
+    for (const handle of pendingTimers) window.clearTimeout(handle)
+    pendingTimers.clear()
+  }, `${PLUGIN_ID}:timers`)
+
+  /**
+   * Run `callback` once after `delay`, tracked for fiber-owned cancellation.
+   * @param callback - the transition settle to run.
+   * @param delay - milliseconds to wait.
+   */
+  const later = (callback: () => void, delay: number): void => {
+    const handle = window.setTimeout(() => {
+      pendingTimers.delete(handle)
+      callback()
+    }, delay)
+    pendingTimers.add(handle)
+  }
 
   // The arrangement is user-authored data, so it is restored as the store's
   // seed and mirrored back on every change. Volatile fields stay at their
@@ -245,7 +275,7 @@ export function apply(ctx: ClientContext): void {
       // holds the previously opened session, so without this the new desk lights
       // up showing the old workspace's conversation.
       store.set({ mode: 'desk', active: workspaceId, opened: null, transition: 'entering', notice: '神经握手完成 / LINK ESTABLISHED' })
-      timers.timeout(() => {
+      later(() => {
         // Unconditional: a competing write to `transition` must not strand the
         // scene mid-animation. Only ever settles to the resting phase.
         if (store.get().mode === 'desk') store.set({ transition: 'idle' })
@@ -260,7 +290,7 @@ export function apply(ctx: ClientContext): void {
     // no way back.
     const leaveDesk = () => {
       store.set({ mode: 'top', active: null, opened: null, transition: 'entering', notice: null })
-      timers.timeout(() => {
+      later(() => {
         if (store.get().mode === 'top') store.set({ transition: 'idle' })
       }, 420)
     }

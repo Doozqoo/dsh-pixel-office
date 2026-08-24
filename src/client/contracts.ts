@@ -66,11 +66,6 @@ export interface ThemeService {
   overrideTokens: (id: string, tokens: Readonly<Record<string, TokenOverride>>) => Disposer
 }
 
-/** Cordis timer mixin methods used for lifecycle-owned transitions. */
-export interface TimerContext {
-  timeout: (callback: () => void, delay: number) => Disposer
-}
-
 /** The workspaces service members this plugin uses. */
 export interface WorkspacesService {
   pickDirectory: () => Promise<string | null>

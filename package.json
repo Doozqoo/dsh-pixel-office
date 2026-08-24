@@ -8,7 +8,7 @@
   "types": "lib/types/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USER/dsh-pixel-office.git"
+    "url": "git+https://github.com/Doozqoo/dsh-pixel-office.git"
   },
   "exports": {
     ".": {
@@ -26,6 +26,8 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-theme",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-settings"
       ]

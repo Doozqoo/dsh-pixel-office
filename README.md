@@ -43,6 +43,8 @@
 - **计划板与显示器共用一条底线。** 两者的底边都由 `--pxo-dock` 推导（`--pxo-sh` 依赖它），不要再给任何一侧写死高度——之前两边各算各的，差了 120px，显示器的机颈和 `PWR` 角标就压到了便利贴叠和脚注上。
 - **俯视图底部的 `--pxo-foot` 是保留带。** 工位网格停在它的上沿，脚注在带内垂直居中。之前网格停在 `bottom:30px`、脚注浮在 `bottom:18px`，中间只剩 12px，最后一行工位直接压住脚注的字。加行列或改网格高度时改这个变量，别再写死数值。
 - **工位卡上的便利贴数量必须和计划板一致。** 用 `notes[id] !== undefined && !archivedIds.includes(id)` 过滤后再计数——直接用 `sessionIds.length` 会把已归档的会话、以及会话列表还没发布的 id 都算进去，卡片显示的数字比板上实际贴着的多。
+- **定时器只能用 `window.setTimeout`，不能用 `ctx.timeout`。** `ctx.timeout` 是 `@deepseek-ai/cordis-plugin-timer` 通过 `ctx.mixin` 混入的，而**浏览器侧的 composition 根本没装这个插件**——`packages/bundle/web-app/cordis.patch.yml` 的 roster 里没有 timer 行，vendored cordis 核心也不带 `timeout`。把 `ctx` 断言成带 `timeout` 的类型能骗过 `tsc`，运行时则在每次进出工位时抛 `timers.timeout is not a function`。现在改用 `window.setTimeout`，并由一个 fiber effect 持有全部未决句柄，卸载或关皮肤时统一 `clearTimeout`——既拿回了生命周期归属，又不依赖不存在的服务。
+- **`dsh.client.inject` 要写真正提供服务的包。** 它是 informational 的（不影响激活顺序，顺序由 `slots.inject()` 保证），但会进 preflight 显示与 HMR diffing。本插件消费的 `slots` / `sessions` / `workspaces` 来自 `dsh-client-runtime`，`theme` 来自 `dsh-client-ui-theme`；`ui-layout` 与 `ui-settings` 提供的是 `shell.overlay` 和 `settings.section` 两个座位。四个都列上才是完整的依赖图。
 - **没有 `leaving` 过渡态。** 「离开工位」直接切 `mode`，转场动画加在**进入**的那一侧。旧写法把切换压在 260ms 定时器后面，窗口期内任何一次 store 写入都会让守卫失配，`pxo-power-off` 的 `both` 填充就把整个场景永久留在 `scaleY(0)`——表现为按钮点了没反应、屏幕全黑。
 - **新建会话时 `pending` 锁住该工位的摆放。** 建会话是异步的，工作区列表可能在 `connectWorkspace` 返回前就发布了新 id，协调 effect 会把它放进第一个空位，随后拖拽回调再按落点写一次——同一个会话占两格，塌缩时就吃掉了上一张便利贴。`pending` 期间协调 effect 跳过这个工位，由回调独占写入。
 - **持久化必须连 `limit` 一起存。** `order` 里的网格是按当时量出的格数建的，而 `limit` 初始值只是占位的 12。只恢复 `order` 不恢复 `limit`，首次协调会用 `fitInto` 把网格截到 12 格，第 12 格之后的便利贴全部重排——`ResizeObserver` 量完再改回来已经晚了。
@@ -58,7 +60,7 @@
 需要一个能跑 `dsh web` 的 DeepSeek Harness。
 
 ```sh
-git clone https://github.com/YOUR_USER/dsh-pixel-office.git
+git clone https://github.com/Doozqoo/dsh-pixel-office.git
 cd dsh-pixel-office
 npm install
 npm run build
