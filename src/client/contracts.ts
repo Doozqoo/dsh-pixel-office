@@ -74,17 +74,62 @@ export interface WorkspacesService {
   /** Creates a session bound to that workspace and resolves its id. */
   connectWorkspace: (workspaceId: string) => Promise<string>
   archiveSession: (sessionId: string) => Promise<void>
+  /** Renames a workspace (changes its displayed title). */
+  rename?: (workspaceId: string, title: string) => Promise<unknown>
+}
+
+/**
+ * One message node in a conversation snapshot.
+ *
+ * Mirrors the union the harness publishes (`UserMessageNode` /
+ * `AssistantMessageNode`); both expose their text either as `content[]` (user)
+ * or `blocks[]` (assistant), with a possible flat `text` fallback. The reader
+ * tolerates whichever shape the running harness uses.
+ */
+export interface MessageNodeMirror {
+  readonly kind: 'user' | 'assistant' | 'system'
+  readonly content?: readonly { readonly text?: string }[]
+  readonly blocks?: readonly { readonly text?: string }[]
+  readonly text?: string
+}
+
+/** A reactive conversation snapshot (the message history). */
+export interface ConversationSnapshotMirror {
+  readonly nodes?: readonly MessageNodeMirror[]
+}
+
+/** A live session face: the session verbs plus a reactive snapshot source. */
+export interface SessionFaceMirror {
+  getSnapshot: () => ConversationSnapshotMirror
 }
 
 /** The sessions service members this plugin uses. */
 export interface SessionsService {
   open: (sessionId: string) => unknown
+  /**
+   * Resolve the live face of a session. The returned `.session` is a
+   * `SessionFace` (`ISession & ObservableSnapshot<ConversationSnapshot>`), which
+   * exposes the full message history — the sticky-note hover preview reads the
+   * last message from here. Messages ARE exposed by the harness; this was
+   * previously a misconception in the plugin.
+   */
+  binding?: (sessionId: string) => { session?: SessionFaceMirror } | undefined
 }
 
 /** The Cordis client context members this plugin uses. */
 export interface ClientContext {
   get: (name: string) => unknown
   effect: (callback: () => Disposer, label?: string) => Disposer
+  /**
+   * Subscribe to a namespaced event on the Cordis event bus.
+   *
+   * `ClientContext` is the merged Cordis `Context`, so `on` is the real
+   * `ctx.on(name, listener)` from the events mixin. Domain state (workspaces,
+   * sessions, settings) is snapshot-driven rather than event-driven, but a few
+   * cross-cutting signals arrive as events: `theme/change`, `connection/reset`,
+   * `slots/changed`, and the `internal/*` lifecycle events. Returns a disposer.
+   */
+  on: (event: string, listener: (...args: readonly unknown[]) => void) => Disposer
 }
 
 /** Owner props the shell passes to a `shell.overlay` occupant. */

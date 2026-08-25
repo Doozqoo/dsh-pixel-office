@@ -25,6 +25,7 @@ export type Modal =
   | { kind: 'full' }
   | { kind: 'tear'; sid: string }
   | { kind: 'clear'; wsId: string; title: string }
+  | { kind: 'rename'; wsId: string; title: string }
 
 /** The complete scene state. */
 export interface SceneState {
@@ -88,6 +89,10 @@ export interface SceneState {
   readonly activity: Readonly<Record<string, number>>
   readonly drag: Drag | null
   readonly modal: Modal | null
+  /** Host transport link state, driven by the `connection/reset` event. */
+  readonly link: 'ok' | 'lost'
+  /** Host appearance scheme reported by `theme/change`. */
+  readonly scheme: 'light' | 'dark'
 }
 
 /** Movement in CSS pixels before a pointer press counts as a drag, not a click. */
@@ -110,6 +115,8 @@ const INITIAL: SceneState = {
   activity: {},
   drag: null,
   modal: null,
+  link: 'ok',
+  scheme: 'dark',
 }
 
 type Listener = () => void
@@ -129,16 +136,16 @@ export interface Store {
  * @returns a store seeded with the initial scene state.
  */
 export function createStore(seed?: Partial<SceneState>): Store {
-  let state: SceneState = seed === undefined
-    ? INITIAL
-    : { ...INITIAL, ...seed, enabled: true, intensity: 'overdrive', grid: true }
+  // Seed merges over defaults. Previously `enabled`, `intensity`, and `grid`
+  // were forced back to their defaults on every write so the presentation was
+  // immutable; they are now user-controllable (the settings section drives
+  // them), so the seed and writes are taken at face value.
+  let state: SceneState = seed === undefined ? INITIAL : { ...INITIAL, ...seed }
   const listeners = new Set<Listener>()
   return {
     get: () => state,
     set(patch) {
-      // Presentation options are intentionally fixed and cannot be changed by
-      // stale persisted data or any future caller of the store.
-      state = { ...state, ...patch, enabled: true, intensity: 'overdrive', grid: true }
+      state = { ...state, ...patch }
       for (const listener of listeners) listener()
     },
     subscribe(listener) {

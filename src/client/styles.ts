@@ -686,6 +686,11 @@ const PREVIEW = '.pxo-preview{position:fixed;z-index:75;pointer-events:auto;'
   + '.pxo-preview-msg .ln.short{width:60%;}'
   + '.pxo-preview-msg .ph{margin-top:3px;font-size:9px;letter-spacing:1px;'
   + 'color:var(--pxo-faint);font-style:italic;}'
+  + '.pxo-preview-role{display:block;font-size:9px;letter-spacing:2px;'
+  + 'color:var(--pxo-neon);margin-bottom:4px;}'
+  + '.pxo-preview-text{display:-webkit-box;-webkit-box-orient:vertical;'
+  + '-webkit-line-clamp:3;overflow:hidden;font-size:11px;line-height:1.5;'
+  + 'color:var(--pxo-ink);word-break:break-word;white-space:pre-wrap;}'
   + '.pxo-preview-actions{display:flex;gap:6px;margin-top:10px;}'
   + '.pxo-btn-pv{flex:1;padding:6px 4px;font-size:10px;font-weight:700;letter-spacing:1px;'
   + 'background:var(--pxo-bg3);color:var(--pxo-ink);border:1px solid var(--pxo-edge);'
@@ -710,6 +715,25 @@ const STACK = '.pxo-stack-zone{position:fixed;left:var(--pxo-bx);'
   + '.pxo-stack-info b{color:var(--pxo-yellow);letter-spacing:3px;font-weight:700;}'
   + '.pxo-stack-arrow{font-size:18px;color:var(--pxo-yellow);font-weight:700;letter-spacing:3px;}'
   + '.pxo-stack-hint{color:var(--pxo-faint);font-size:10px;letter-spacing:1px;}'
+
+/* ----------------------------------------------------------------------------
+ * Link-lost overlay: what the office shows when the host transport resets.
+ * A full-bleed red CRT "NO CARRIER" so a dropped link reads as a dead terminal
+ * rather than a silently frozen room. Pointer-events pass through; the toast
+ * carries the spoken announcement.
+ * --------------------------------------------------------------------------*/
+const LINKLOST = '.pxo-lost{position:fixed;inset:0;z-index:70;pointer-events:none;'
+  + 'display:flex;align-items:center;justify-content:center;'
+  + 'background:repeating-linear-gradient(0deg,rgba(255,60,60,.10) 0 2px,transparent 2px 4px),'
+  + 'radial-gradient(120% 80% at 50% 50%,rgba(40,4,8,.55),rgba(8,2,4,.86));'
+  + 'animation:pxo-fade .2s ease-out both;}'
+  + '.pxo-lost-in{display:flex;flex-direction:column;align-items:center;gap:10px;'
+  + 'text-align:center;padding:0 24px;}'
+  + '.pxo-lost .ttl{font-size:26px;font-weight:700;letter-spacing:8px;color:var(--pxo-red);'
+  + 'text-shadow:0 0 18px rgba(255,92,92,.6);animation:pxo-blink 1.1s steps(2) infinite;}'
+  + '.pxo-lost .sub{font-size:11px;letter-spacing:2px;color:#ffb0b0;}'
+  + '.pxo-lost .cursor{width:9px;height:15px;background:var(--pxo-red);opacity:.7;'
+  + 'animation:pxo-blink 1.1s steps(2) infinite;}'
 
 /* ----------------------------------------------------------------------------
  * Dialogs, drag ghost, settings.
@@ -759,7 +783,7 @@ const DIALOGS = '.pxo-modal-bg{position:fixed;inset:0;z-index:90;pointer-events:
  * stack horizontally keeps the notice low in the frame; raising it above the
  * dock instead pushed it far up into the scene.
  * --------------------------------------------------------------------------*/
-const TOAST = '.pxo-toast{position:fixed;left:74%;bottom:70px;'
+const TOAST = '.pxo-toast{position:fixed;left:50%;bottom:28px;'
   + 'z-index:95;pointer-events:none;'
   + 'display:flex;align-items:center;gap:10px;padding:10px 18px 10px 14px;'
   + 'background:rgba(8,14,28,.92);color:var(--pxo-ink);font-size:11px;font-weight:700;'
@@ -1063,7 +1087,7 @@ export const CSS: string = [
   GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
   DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, PREVIEW, STACK, DIALOGS,
-  TOAST, SETTINGS, STATES, MOTION,
+  TOAST, SETTINGS, STATES, MOTION, LINKLOST,
   KEYFRAMES,
 ].join('\n')
 

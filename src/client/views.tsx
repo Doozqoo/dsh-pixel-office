@@ -8,6 +8,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, formatRelative, hashIndex, swapCells } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
+import type { SessionFaceMirror } from './contracts.ts'
 
 /** One session as the views consume it. */
 export interface NoteRecord {
@@ -32,6 +33,127 @@ type Registry = Record<number, HTMLElement | null>
  */
 export function useScene(store: Store): SceneState {
   return useSyncExternalStore(store.subscribe, store.get, store.get)
+}
+
+/**
+ * Extract the last message from a live session face.
+ *
+ * `binding(id).session` is a `SessionFace` (`ISession &
+ * ObservableSnapshot<ConversationSnapshot>`); its snapshot exposes `nodes`,
+ * each carrying text as `content[]` (user) or `blocks[]` (assistant), or a flat
+ * `text`. This replaces the old placeholder that claimed the harness hid
+ * message contents — it does not. Messages are fully exposed.
+ * @param face - the live session face, or undefined.
+ * @returns the most recent message's role and text, or undefined.
+ */
+export function lastMessageFromFace(
+  face: SessionFaceMirror | undefined,
+): { readonly role: string; readonly text: string } | undefined {
+  const snap = face?.getSnapshot?.()
+  const nodes = snap?.nodes
+  if (nodes === undefined || nodes.length === 0) return undefined
+  const last = nodes[nodes.length - 1]
+  if (last === undefined) return undefined
+  const role = last.kind === 'assistant' ? 'AI' : last.kind === 'user' ? 'YOU' : 'SYS'
+  let text = ''
+  if (Array.isArray(last.blocks)) {
+    text = last.blocks.map((b) => b?.text ?? '').filter(Boolean).join(' ')
+  } else if (Array.isArray(last.content)) {
+    text = last.content.map((c) => c?.text ?? '').filter(Boolean).join(' ')
+  } else if (typeof last.text === 'string') {
+    text = last.text
+  }
+  text = text.trim()
+  if (text === '') return undefined
+  return { role, text }
+}
+
+/**
+ * The Pixel Office settings page, mounted by the host into `settings.section`.
+ *
+ * Reads and writes the scene store directly. The master switch toggles
+ * `enabled` (the whole scene unmounts when off, but this section — rendered in
+ * the host settings panel — stays reachable to turn it back on). Intensity and
+ * grid are user preferences persisted across reloads.
+ * @param store - the scene store.
+ * @param close - the host-provided close affordance for the settings panel.
+ */
+export function PixelOfficeSettings(props: {
+  readonly store: Store
+  readonly close: () => void
+}): ReactNode {
+  const { store } = props
+  const scene = useScene(store)
+  const setEnabled = (value: boolean) => { store.set({ enabled: value }) }
+  const setIntensity = (value: 'calm' | 'overdrive') => { store.set({ intensity: value }) }
+  const setGrid = (value: boolean) => { store.set({ grid: value }) }
+  return (
+    <div className="pxo-settings">
+      <div className="pxo-settings-hero">
+        <span className="pxo-settings-kicker">THEME MODULE</span>
+        <h2>PIXEL OFFICE</h2>
+        <p>像素办公主题 · 将工作区重绘为霓虹控制台。</p>
+      </div>
+
+      <div className="pxo-set-master">
+        <div className="pxo-set-row">
+          <span>启用像素办公 / ENABLE SKIN</span>
+          <button
+            type="button"
+            className="pxo-toggle"
+            aria-pressed={scene.enabled}
+            onClick={() => { setEnabled(!scene.enabled) }}
+          >
+            <span />{scene.enabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        <p className="pxo-note">关闭后恢复原生界面；可随时在此重新启用。</p>
+      </div>
+
+      <div className="pxo-set-card">
+        <div className="pxo-set-row"><span>动效强度 / INTENSITY</span></div>
+        <div className="pxo-segment" role="group" aria-label="动效强度">
+          <button
+            type="button"
+            aria-pressed={scene.intensity === 'calm'}
+            onClick={() => { setIntensity('calm') }}
+          >CALM · 静默</button>
+          <button
+            type="button"
+            aria-pressed={scene.intensity === 'overdrive'}
+            onClick={() => { setIntensity('overdrive') }}
+          >OVERDRIVE · 过载</button>
+        </div>
+        <p className="pxo-note">静默模式保留配色，仅停止环境动效。</p>
+      </div>
+
+      <div className="pxo-set-card">
+        <div className="pxo-set-row"><span>网格地平线 / GRID FLOOR</span></div>
+        <button
+          type="button"
+          className="pxo-toggle"
+          aria-pressed={scene.grid}
+          onClick={() => { setGrid(!scene.grid) }}
+        >
+          <span />{scene.grid ? 'SHOWN' : 'HIDDEN'}
+        </button>
+        <p className="pxo-note">切换俯视网格与透视地板。</p>
+      </div>
+    </div>
+  )
+}
+
+/** Full-bleed CRT "NO CARRIER" overlay shown when the host transport drops. */
+function LinkLost(): ReactNode {
+  return (
+    <div className="pxo-lost" role="alert" aria-live="assertive">
+      <div className="pxo-lost-in">
+        <span className="ttl">NO CARRIER</span>
+        <span className="sub">链路中断 · 正在尝试重新握手</span>
+        <span className="cursor" />
+      </div>
+    </div>
+  )
 }
 
 /** Pointer-targets populated by the planning-board drag handlers. */
@@ -317,6 +439,7 @@ function DeskTile(props: {
   readonly onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onEnter: () => void
   readonly onClear: () => void
+  readonly onRename: () => void
   readonly onCreate: () => void
 }): ReactNode {
   const state = props.isEmpty
@@ -369,14 +492,24 @@ function DeskTile(props: {
           {props.isEmpty
             ? null
             : (
-                <button
-                  type="button"
-                  className="pxo-ico"
-                  title="清空工位"
-                  aria-label={`清空工位 ${props.name}`}
-                  onPointerDown={(event) => { event.stopPropagation() }}
-                  onClick={(event) => { event.stopPropagation(); props.onClear() }}
-                >×</button>
+                <>
+                  <button
+                    type="button"
+                    className="pxo-ico"
+                    title="重命名工位"
+                    aria-label={`重命名工位 ${props.name}`}
+                    onPointerDown={(event) => { event.stopPropagation() }}
+                    onClick={(event) => { event.stopPropagation(); props.onRename() }}
+                  >✎</button>
+                  <button
+                    type="button"
+                    className="pxo-ico"
+                    title="清空工位"
+                    aria-label={`清空工位 ${props.name}`}
+                    onPointerDown={(event) => { event.stopPropagation() }}
+                    onClick={(event) => { event.stopPropagation(); props.onClear() }}
+                  >×</button>
+                </>
               )}
         </div>
       </div>
@@ -433,6 +566,7 @@ export function TopView(props: {
   readonly onCreate: () => void
   readonly onEnter: (wsId: string) => void
   readonly onClear: (wsId: string) => void
+  readonly onRename: (wsId: string) => void
   readonly onSettings: () => void
 }): ReactNode {
   const { store, desks, running } = props
@@ -556,6 +690,7 @@ export function TopView(props: {
               onPointerUp={(e) => { onUp(e, i) }}
               onEnter={() => { if (desk !== undefined) props.onEnter(desk.id) }}
               onClear={() => { if (desk !== undefined) props.onClear(desk.id) }}
+              onRename={() => { if (desk !== undefined) props.onRename(desk.id) }}
               onCreate={props.onCreate}
             />
           )
@@ -565,6 +700,7 @@ export function TopView(props: {
         01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
       </div>
       <div className="pxo-scan" />
+      {scene.link === 'lost' ? <LinkLost /> : null}
     </div>
   )
 }
@@ -576,15 +712,16 @@ export function TopView(props: {
 /**
  * The lightweight summary card shown when a planning-board note is hovered.
  *
- * Read-only: it surfaces the note's title, live status, last-activity time, and
- * a few quick actions, but never changes any existing interaction. The message
- * body is a placeholder — the DSH session service does not currently expose
- * message contents to the plugin, so per the v2 spec the preview degrades to
- * title + running state + time + note meta (see docs handoff §2.3).
+ * Read-only: it surfaces the note's title, live status, last-activity time, the
+ * most recent message, and a few quick actions, but never changes any existing
+ * interaction. The last message is read from the live session face via
+ * `lastMessageFromFace(binding(id).session)` — the harness exposes full message
+ * contents, so this is real transcript text rather than a placeholder.
  * @param rect - the hovered sticker's viewport rect, for anchoring.
  * @param title - display title (label override or session title).
  * @param running - whether the session is streaming.
  * @param lastActivity - last-activity epoch ms, or undefined.
+ * @param last - the most recent message (role + text), or undefined.
  * @param nodeIndex - 0-based slot index, for the "NODE NN" glyph.
  * @param onOpen - open the session on the monitor.
  * @param onEdit - open the existing edit modal for this note.
@@ -597,6 +734,7 @@ function StickerPreview(props: {
   readonly title: string
   readonly running: boolean
   readonly lastActivity: number | undefined
+  readonly last: { readonly role: string; readonly text: string } | undefined
   readonly nodeIndex: number
   readonly onOpen: () => void
   readonly onEdit: () => void
@@ -634,10 +772,21 @@ function StickerPreview(props: {
       <div className="pxo-preview-status">{status}</div>
       <div className="pxo-preview-time">最近活动 · {formatRelative(props.lastActivity, Date.now())}</div>
       <div className="pxo-preview-msg" aria-hidden="true">
-        <span className="ln" />
-        <span className="ln" />
-        <span className="ln short" />
-        <span className="ph">— 消息内容需 DSH 会话服务暴露 —</span>
+        {props.last === undefined
+          ? (
+              <>
+                <span className="ln" />
+                <span className="ln" />
+                <span className="ln short" />
+                <span className="ph">— 暂无消息记录 —</span>
+              </>
+            )
+          : (
+              <>
+                <span className="pxo-preview-role">{props.last.role}</span>
+                <span className="pxo-preview-text">{props.last.text}</span>
+              </>
+            )}
       </div>
       <div className="pxo-preview-actions">
         <button type="button" className="pxo-btn-pv open" onClick={props.onOpen}>▶ 打开会话</button>
@@ -808,6 +957,8 @@ export function DeskView(props: {
   readonly onBack: () => void
   readonly onSettings: () => void
   readonly consumed: number
+  /** Resolve the latest message of a session for the hover preview. */
+  readonly readLastMessage: (sessionId: string) => { readonly role: string; readonly text: string } | undefined
 }): ReactNode {
   const { store, desk, notes } = props
   const scene = useScene(store)
@@ -1022,6 +1173,7 @@ export function DeskView(props: {
       />
 
       <div className="pxo-scan" />
+      {scene.link === 'lost' ? <LinkLost /> : null}
 
       {preview === null ? null : (() => {
         const sid = preview.sid
@@ -1033,6 +1185,7 @@ export function DeskView(props: {
             title={label}
             running={note?.running === true}
             lastActivity={scene.activity[sid]}
+            last={props.readLastMessage(sid)}
             nodeIndex={order.indexOf(sid)}
             closing={previewClosing}
             onOpen={() => { hidePreviewNow(); props.onOpen(sid) }}
@@ -1169,6 +1322,7 @@ export function Dialogs(props: {
   readonly onAdd: (pos: number, text: string) => void
   readonly onTear: (sessionId: string) => void
   readonly onClear: (workspaceId: string) => void
+  readonly onRename: (workspaceId: string, title: string) => void
 }): ReactNode {
   const { store, notes } = props
   const scene = useScene(store)
@@ -1232,6 +1386,17 @@ export function Dialogs(props: {
           danger
           onCancel={close}
           onOk={() => { close(); props.onClear(modal.wsId) }}
+        />
+      )
+    case 'rename':
+      return (
+        <InputModal
+          title="✎ 重命名工位"
+          desc="为这台工作站重新命名，仅更改显示标题，不影响其会话记录。"
+          initial={modal.title}
+          okText="重命名"
+          onCancel={close}
+          onOk={(text) => { close(); props.onRename(modal.wsId, text) }}
         />
       )
   }

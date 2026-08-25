@@ -11,14 +11,14 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
-  SlotsService, ThemeService, WorkspacesService,
+  SessionFaceMirror, SlotsService, ThemeService, WorkspacesService,
 } from './contracts.ts'
 import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
-import { insertStyles } from './styles.ts'
+import { insertBaseStyles, insertStyles } from './styles.ts'
 import { DARK_TOKENS, LIGHT_TOKENS, pairTokens } from './tokens.ts'
-import { DeskView, Dialogs, DragGhost, TopView, useScene } from './views.tsx'
+import { DeskView, Dialogs, DragGhost, PixelOfficeSettings, TopView, lastMessageFromFace, useScene } from './views.tsx'
 import type { DeskRecord, NoteRecord } from './views.tsx'
 
 /** Identifier used for slot registrations, the theme override, and log lines. */
@@ -39,6 +39,25 @@ function openShippedSettings(): boolean {
   if (button === null) return false
   button.click()
   return true
+}
+
+/**
+ * Read the host appearance scheme from a `theme/change` snapshot.
+ *
+ * Appearance is folded into the theme snapshot (`active.colorScheme` or the
+ * top-level `preference`); there is no separate `onAppearanceChange` callback.
+ * @param snapshot - the payload of the `theme/change` event.
+ * @returns the scheme, or undefined when the shape is unexpected.
+ */
+function readScheme(snapshot: unknown): 'light' | 'dark' | undefined {
+  const snap = snapshot as
+    | { active?: { colorScheme?: string }; preference?: string }
+    | undefined
+  const scheme = snap?.active?.colorScheme
+  if (scheme === 'light' || scheme === 'dark') return scheme
+  const preference = snap?.preference
+  if (preference === 'light' || preference === 'dark') return preference
+  return undefined
 }
 
 /**
@@ -66,6 +85,19 @@ export function apply(ctx: ClientContext): void {
   const workspaces = ctx.get('workspaces') as WorkspacesService | undefined
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
+
+  /**
+   * Resolve the most recent message of a session for the hover preview.
+   *
+   * `sessions.binding(id).session` is the live `SessionFace`, whose snapshot
+   * exposes the full message history — the harness does expose message
+   * contents (the old placeholder was wrong). Returns undefined when the
+   * service or binding is unavailable.
+   */
+  const readLastMessage = (sessionId: string): { role: string; text: string } | undefined => {
+    const face = sessions?.binding?.(sessionId)?.session as SessionFaceMirror | undefined
+    return lastMessageFromFace(face)
+  }
 
   // Deferred transition settles, owned by the fiber.
   //
@@ -104,15 +136,68 @@ export function apply(ctx: ClientContext): void {
   const store = createStore(loadScene())
   ctx.effect(() => persistScene(store), `${PLUGIN_ID}:persist`)
 
-  // The presentation is intentionally fixed: the plugin always contributes its
-  // stylesheet and token overrides for the lifetime of the Cordis fiber.
+  /**
+   * Rename a workspace (the "re-label the workstation" action). Degrades to a
+   * toast when the running harness does not expose `workspaces.rename`.
+   */
+  const renameWorkspace = async (workspaceId: string, title: string): Promise<void> => {
+    if (workspaces === undefined || workspaces.rename === undefined) {
+      store.set({ notice: '重命名不可用 / RENAME OFFLINE' })
+      return
+    }
+    try {
+      await workspaces.rename(workspaceId, title)
+      store.set({ notice: '工位重命名 / STATION RELABELED' })
+    } catch (error) {
+      console.error(`${PLUGIN_ID}: workspace rename failed`, error)
+      store.set({ notice: '重命名失败 / RENAME FAILED' })
+    }
+  }
+
+  // The skin (stylesheet + token overrides) now follows the master switch:
+  // enabling the scene mounts it, disabling it tears the sheet back down so the
+  // shipped GUI — including the sidebar and conversation — returns untouched.
+  // Previously the sheet was injected unconditionally for the fiber's lifetime,
+  // which made the master switch unable to actually turn the skin off.
   ctx.effect(() => {
-    const removeStyles = insertStyles()
-    const removeTokens = theme?.overrideTokens(
-      PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
-    )
-    return () => { removeStyles(); removeTokens?.() }
+    let removeStyles: Disposer | undefined
+    let removeTokens: Disposer | undefined
+    const applySkin = (on: boolean): void => {
+      if (on && removeStyles === undefined) {
+        removeStyles = insertStyles()
+        removeTokens = theme?.overrideTokens(
+          PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
+        )
+      } else if (!on && removeStyles !== undefined) {
+        removeStyles()
+        removeTokens?.()
+        removeStyles = undefined
+        removeTokens = undefined
+      }
+    }
+    applySkin(store.get().enabled)
+    const unsubscribe = store.subscribe(() => applySkin(store.get().enabled))
+    return () => { unsubscribe(); applySkin(false) }
   }, `${PLUGIN_ID}:skin`)
+
+  // Always-present base sheet: keeps the settings panel (incl. the master
+  // switch) legible even while the skin sheet is torn down by the switch above.
+  // Previously defined but never injected — dead code.
+  ctx.effect(() => insertBaseStyles(), `${PLUGIN_ID}:base-styles`)
+
+  // Host transport / appearance signals — the only cross-cutting events the
+  // harness emits (workspace, session, and settings changes are snapshot-driven,
+  // not event-driven). `connection/reset` drops the link banner; `theme/change`
+  // tracks the host appearance for any scheme-aware chrome.
+  const offReset = ctx.on('connection/reset', () => {
+    store.set({ link: 'lost', notice: '链路中断 / LINK LOST' })
+    later(() => store.set({ link: 'ok' }), 8000)
+  })
+  const offTheme = ctx.on('theme/change', (...args: readonly unknown[]) => {
+    const scheme = readScheme(args[0])
+    if (scheme !== undefined) store.set({ scheme })
+  })
+  ctx.effect(() => () => { offReset(); offTheme() }, `${PLUGIN_ID}:events`)
 
   function Scene(props: OverlayProps): ReactNode {
     const scene = useScene(store)
@@ -277,6 +362,11 @@ export function apply(ctx: ClientContext): void {
       store.set({ modal: { kind: 'clear', wsId: workspaceId, title: desk?.title ?? '' } })
     }
 
+    const renameWorkspaceReq = (workspaceId: string) => {
+      const desk = desks.find(d => d.id === workspaceId)
+      store.set({ modal: { kind: 'rename', wsId: workspaceId, title: desk?.title ?? '' } })
+    }
+
     const addSession = async (pos: number, text: string) => {
       if (workspaces === undefined || activeDesk === undefined) {
         store.set({ modal: null, notice: '会话链路不可用 / SESSION LINK OFFLINE' })
@@ -332,6 +422,15 @@ export function apply(ctx: ClientContext): void {
       }
     }, [scene.opened, openedLive])
 
+    // Auto-dismiss the bottom-island notice after 3.5 s so it never
+    // goes stale against the current page state (rename done, link
+    // restored, workspace linked, etc.).
+    useEffect(() => {
+      if (scene.notice === null) return
+      const id = setTimeout(() => { store.set({ notice: null }) }, 3500)
+      return () => { clearTimeout(id) }
+    }, [scene.notice])
+
     // Skin off: render nothing, so the shipped GUI is untouched rather than
     // covered. Placed after every hook above — an early return before them
     // would change the hook order between renders and crash React.
@@ -356,6 +455,7 @@ export function apply(ctx: ClientContext): void {
                 onCreate={() => { void createWorkspace() }}
                 onEnter={enterDesk}
                 onClear={clearWorkspace}
+                onRename={renameWorkspaceReq}
                 onSettings={openSettings}
               />
             )
@@ -370,6 +470,7 @@ export function apply(ctx: ClientContext): void {
                   onBack={leaveDesk}
                   onSettings={openSettings}
                   consumed={consumed}
+                  readLastMessage={readLastMessage}
                 />
               )}
         <DragGhost store={store} notes={notes} />
@@ -382,6 +483,7 @@ export function apply(ctx: ClientContext): void {
           onAdd={(pos, text) => { void addSession(pos, text) }}
           onTear={(sessionId) => { workspaces?.archiveSession(sessionId) }}
           onClear={(workspaceId) => { workspaces?.delete(workspaceId) }}
+          onRename={(workspaceId, title) => { void renameWorkspace(workspaceId, title) }}
         />
       </div>
     )
@@ -396,5 +498,19 @@ export function apply(ctx: ClientContext): void {
       Scene,
     )) as Disposer,
     `${PLUGIN_ID}:overlay`,
+  )
+
+  // The Pixel Office settings page, mounted into the host's settings panel via
+  // the canonical `settings.section` slot — the supported home for a feature's
+  // own preferences. The previous build had the section CSS but never
+  // registered it and instead opened the panel by faking a click on
+  // `settings.trigger`; this registers a real, discoverable section that
+  // receives the host `close` affordance via its owner props.
+  ctx.effect(
+    () => slots.inject('settings.section', () => slots.register(
+      { name: 'settings.section', id: PLUGIN_ID, order: 60, label: 'Pixel Office' },
+      (owner: { close: () => void }) => <PixelOfficeSettings store={store} close={owner.close} />,
+    )) as Disposer,
+    `${PLUGIN_ID}:settings`,
   )
 }

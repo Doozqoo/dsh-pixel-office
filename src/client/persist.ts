@@ -31,7 +31,7 @@ const STORAGE_KEY = 'dsh-pixel-office:scene:v1'
  * reflow every note past that point, before the measurement could correct it.
  */
 export type PersistedScene = Pick<
-  SceneState, 'layout' | 'order' | 'labels' | 'limit'
+  SceneState, 'layout' | 'order' | 'labels' | 'limit' | 'intensity' | 'grid'
 >
 
 /**
@@ -118,6 +118,12 @@ export function loadScene(): Partial<PersistedScene> | undefined {
   }
   const layout = readPlacement(source.layout)
   if (layout !== undefined) restored.layout = layout
+  // Intensity / grid are user preferences: restore them when well-formed so a
+  // reload keeps the chosen cyberdeck calibration.
+  if (source.intensity === 'calm' || source.intensity === 'overdrive') {
+    restored.intensity = source.intensity
+  }
+  if (typeof source.grid === 'boolean') restored.grid = source.grid
   // Guard the range: a corrupt or hostile value here would size the matrix.
   if (
     typeof source.limit === 'number'
@@ -149,6 +155,8 @@ export function persistScene(store: Store): () => void {
       && last.order === state.order
       && last.labels === state.labels
       && last.limit === state.limit
+      && last.intensity === state.intensity
+      && last.grid === state.grid
     ) return
 
     const snapshot: PersistedScene = {
@@ -156,6 +164,8 @@ export function persistScene(store: Store): () => void {
       order: state.order,
       labels: state.labels,
       limit: state.limit,
+      intensity: state.intensity,
+      grid: state.grid,
     }
     last = snapshot
     try {
