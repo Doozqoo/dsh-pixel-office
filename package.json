@@ -61,6 +61,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "README.md",
+    "AUDIT.md",
     "LICENSE"
   ]
 }
