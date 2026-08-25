@@ -154,36 +154,34 @@ export function apply(ctx: ClientContext): void {
     }
   }
 
-  // The skin (stylesheet + token overrides) now follows the master switch:
-  // enabling the scene mounts it, disabling it tears the sheet back down so the
-  // shipped GUI — including the sidebar and conversation — returns untouched.
-  // Previously the sheet was injected unconditionally for the fiber's lifetime,
-  // which made the master switch unable to actually turn the skin off.
+  // ---------------------------------------------------------------------------
+  // Styles: base sheet (always present, host-themed) + skin sheet (pixel,
+  // toggled by the master switch). Merged into a SINGLE ctx.effect so the
+  // DOM insertion order is deterministic: BASE <style> is always injected
+  // BEFORE SKIN <style>. This is critical because equal-specificity rules
+  // (e.g. .pxo-set-master .pxo-toggle > span) exist in both sheets; the
+  // later one wins. Two separate effects would race — Cordis does not
+  // guarantee execution order between independent fibers — causing the
+  // master toggle to render with base styles on first paint and only
+  // "self-heal" after the user clicks the toggle (which tears down and
+  // re-creates the skin tag, placing it after base).
+  // ---------------------------------------------------------------------------
   ctx.effect(() => {
-    let removeStyles: Disposer | undefined
+    const removeBase = insertBaseStyles()
+    let removeSkin: Disposer | undefined
     let removeTokens: Disposer | undefined
     const applySkin = (on: boolean): void => {
-      if (on && removeStyles === undefined) {
-        removeStyles = insertStyles()
-        removeTokens = theme?.overrideTokens(
-          PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS),
-        )
-      } else if (!on && removeStyles !== undefined) {
-        removeStyles()
-        removeTokens?.()
-        removeStyles = undefined
-        removeTokens = undefined
+      if (on && removeSkin === undefined) {
+        removeSkin = insertStyles()
+        removeTokens = theme?.overrideTokens(PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS))
+      } else if (!on && removeSkin !== undefined) {
+        removeSkin(); removeTokens?.(); removeSkin = undefined; removeTokens = undefined
       }
     }
     applySkin(store.get().enabled)
     const unsubscribe = store.subscribe(() => applySkin(store.get().enabled))
-    return () => { unsubscribe(); applySkin(false) }
-  }, `${PLUGIN_ID}:skin`)
-
-  // Always-present base sheet: keeps the settings panel (incl. the master
-  // switch) legible even while the skin sheet is torn down by the switch above.
-  // Previously defined but never injected — dead code.
-  ctx.effect(() => insertBaseStyles(), `${PLUGIN_ID}:base-styles`)
+    return () => { unsubscribe(); applySkin(false); removeBase() }
+  }, `${PLUGIN_ID}:styles`)
 
   // Host transport / appearance signals — the only cross-cutting events the
   // harness emits (workspace, session, and settings changes are snapshot-driven,

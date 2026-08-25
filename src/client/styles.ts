@@ -814,24 +814,79 @@ const MASTER = '.pxo-set-master{padding:14px;border:1px solid var(--dsw-alias-bo
   + '.pxo-set-master output{font-size:11px;letter-spacing:1px;'
   + 'color:var(--dsw-alias-label-tertiary,inherit);'
   + 'font-family:ui-monospace,monospace;}'
-  + '.pxo-set-master .pxo-toggle{display:inline-flex;align-items:center;gap:8px;'
-  + 'align-self:flex-start;width:auto;padding:7px 14px;cursor:pointer;font-size:12px;'
-  + 'font-family:inherit;letter-spacing:normal;border-radius:5px;'
-  + 'border:1px solid var(--dsw-alias-border-l2,#8886);'
-  + 'background:var(--dsw-alias-bg-layer-3,transparent);'
-  + 'color:var(--dsw-alias-label-primary,inherit);box-shadow:none;}'
-  + '.pxo-set-master .pxo-toggle:hover{'
-  + 'background:var(--dsw-alias-interactive-bg-hover,transparent);'
-  + 'border-color:var(--dsw-alias-border-l3,#888a);color:var(--dsw-alias-label-primary,inherit);}'
-  // Small state lamp inside the button: filled when engaged, hollow when not.
-  + '.pxo-set-master .pxo-toggle > span{width:9px;height:9px;flex:none;border-radius:50%;'
-  + 'background:transparent;box-shadow:inset 0 0 0 1.5px currentColor;opacity:.85;}'
-  + '.pxo-set-master .pxo-toggle[aria-pressed="true"] > span{background:currentColor;}'
+  // NOTE: No master-specific .pxo-toggle rules here. The master toggle uses
+  // className="pxo-toggle" just like the grid toggle, so it picks up the
+  // generic .pxo-toggle > span / ::after path from SETTINGS_BASE (base mode)
+  // or from the skin's .pxo-toggle block (pixel mode). This avoids the
+  // specificity war where base .pxo-set-master .pxo-toggle > span (round lamp)
+  // fought against skin overrides — a battle that caused first-load
+  // misalignment across multiple fix attempts.
   + '.pxo-set-master .pxo-note{margin:0;font-size:11px;line-height:1.7;'
   + 'letter-spacing:normal;color:var(--dsw-alias-label-secondary,inherit);}'
 
+/* ----------------------------------------------------------------------------
+ * Base settings panel: always injected so the section looks polished even
+ * when the pixel skin is off. Uses host theme tokens (--dsw-*) so it adapts
+ * to light/dark automatically. The pixel skin's two-class selectors
+ * (.pxo-set-master ...) override these on specificity when the skin loads.
+ * --------------------------------------------------------------------------*/
+const SETTINGS_BASE = '.pxo-settings{display:flex;flex-direction:column;gap:16px;'
+  + 'font-family:inherit;}'
+  + '.pxo-settings-hero{padding:16px 18px;'
+  + 'background:var(--dsw-alias-bg-layer-2,transparent);'
+  + 'border-radius:8px;border:1px solid var(--dsw-alias-border-l1,#e5e7eb);}'
+  + '.pxo-settings-kicker{display:inline-block;font-size:10px;letter-spacing:2px;'
+  + 'text-transform:uppercase;color:var(--dsw-alias-label-tertiary,#9ca3af);'
+  + 'font-weight:600;}'
+  + '.pxo-settings-hero h2{margin:6px 0 4px;font-size:18px;font-weight:700;'
+  + 'color:var(--dsw-alias-label-primary,#111827);letter-spacing:.5px;}'
+  + '.pxo-settings-hero p{margin:0;font-size:12px;line-height:1.6;'
+  + 'color:var(--dsw-alias-label-secondary,#6b7280);}'
+  + '.pxo-set-card{padding:16px;background:var(--dsw-alias-bg-layer-2,transparent);'
+  + 'border-radius:8px;border:1px solid var(--dsw-alias-border-l1,#e5e7eb);}'
+  + '.pxo-set-card .pxo-set-row{margin-bottom:10px;}'
+  + '.pxo-set-card > .pxo-set-row > span,'
+  + '.pxo-set-card label{color:var(--dsw-alias-label-primary,#111827);'
+  + 'font-size:13px;font-weight:600;}'
+  + '.pxo-set-card output{color:var(--dsw-alias-accent-primary,#3b82f6);'
+  + 'font-size:11px;font-weight:700;padding:3px 8px;'
+  + 'background:var(--dsw-alias-bg-layer-3,f9fafb);border-radius:4px;'
+  + 'border:1px solid var(--dsw-alias-border-l2,#e5e7eb);}'
+  // Segmented control — native-looking pill group.
+  + '.pxo-segment{display:flex;gap:0;border-radius:6px;'
+  + 'overflow:hidden;border:1px solid var(--dsw-alias-border-l1,#e5e7eb);'
+  + 'background:var(--dsw-alias-bg-layer-3,f9fafb);}'
+  + '.pxo-segment button{flex:1;padding:8px 12px;font-size:12px;font-weight:600;'
+  + 'cursor:pointer;border:0;background:transparent;'
+  + 'color:var(--dsw-alias-label-secondary,#6b7280);'
+  + 'transition:color .15s,background .15s;}'
+  + '.pxo-segment button:hover{color:var(--dsw-alias-label-primary,#111827);'
+  + 'background:var(--dsw-alias-interactive-bg-hover,f3f4f6);}'
+  + '.pxo-segment button[aria-pressed="true"]{'
+  + 'background:var(--dsw-alias-accent-primary,#3b82f6);color:#fff;}'
+  // Grid / generic toggle — native-looking switch.
+  + '.pxo-toggle{display:inline-flex;align-items:center;gap:8px;'
+  + 'cursor:pointer;font-size:12px;font-weight:600;'
+  + 'color:var(--dsw-alias-label-primary,#111827);'
+  + 'background:transparent;border:0;padding:0;}'
+  + '.pxo-toggle > span{position:relative;display:inline-flex;flex:none;'
+  + 'width:36px;height:20px;border-radius:10px;'
+  + 'background:var(--dsw-alias-border-l2,#d1d5db);'
+  + 'transition:background .2s ease;}'
+  + '.pxo-toggle > span::after{content:"";position:absolute;top:2px;left:2px;'
+  + 'width:16px;height:16px;border-radius:50%;background:#fff;'
+  + 'box-shadow:0 1px 3px rgba(0,0,0,.15);'
+  + 'transition:left .2s ease,background .2s ease;}'
+  + '.pxo-toggle[aria-pressed="true"] > span{'
+  + 'background:var(--dsw-alias-accent-primary,#3b82f6);}'
+  + '.pxo-toggle[aria-pressed="true"] > span::after{left:18px;}'
+  + '.pxo-toggle:hover{color:var(--dsw-alias-accent-primary,#3b82f6);}'
+  // Notes.
+  + '.pxo-note{margin:8px 0 0;font-size:11px;line-height:1.6;'
+  + 'color:var(--dsw-alias-label-tertiary,#9ca3af);}'
+
 /** Styles that must survive the skin being switched off. */
-export const BASE_CSS: string = MASTER
+export const BASE_CSS: string = MASTER + SETTINGS_BASE
 
 /* ----------------------------------------------------------------------------
  * Settings section: hero, cards, segmented control, toggle.
@@ -862,27 +917,25 @@ const SETTINGS = '.pxo-settings{display:flex;flex-direction:column;gap:14px;'
   + 'inset 3px 3px 0 rgba(255,255,255,.03);}'
   // Re-skin the master card. Its own rules are two-class selectors that would
   // otherwise outrank the generic pixel ones regardless of sheet order, leaving
-  // a native-looking control stranded in the middle of the pixel panel. These
-  // match that specificity so the switch joins the skin while the skin is on.
-  + '.pxo-set-master{border:0;border-radius:0;background:var(--pxo-bg2);'
+  // a native-looking control stranded in the middle of the pixel panel.
+  //
+  // The master card shares the same vertical layout as .pxo-set-card
+  // (title row -> toggle bar -> note) and the same pixel card shell.
+  //
+  // The master toggle uses className="pxo-toggle" just like the grid toggle,
+  // so it picks up the generic .pxo-toggle / > span / ::after rules below.
+  // No master-specific toggle overrides needed — this eliminates the
+  // specificity war that caused first-load misalignment across many fix
+  // attempts.
+  + '.pxo-settings .pxo-set-master{padding:14px;background:var(--pxo-bg2);'
+  + 'box-shadow:inset 0 0 0 2px var(--pxo-edge),inset -3px -3px 0 rgba(0,0,0,.3),'
+  + 'inset 3px 3px 0 rgba(255,255,255,.03);'
   + 'font-family:var(--pxo-font);color:var(--pxo-ink);}'
-  + '.pxo-set-master .pxo-set-row{color:var(--pxo-ink);font-size:11px;'
+  + '.pxo-settings .pxo-set-master .pxo-set-row{color:var(--pxo-ink);font-size:11px;'
   + 'font-weight:700;letter-spacing:2px;margin-bottom:0;}'
-  + '.pxo-set-master output{color:var(--pxo-neon);background:var(--pxo-crt);'
+  + '.pxo-settings .pxo-set-master output{color:var(--pxo-neon);background:var(--pxo-crt);'
   + 'font-family:var(--pxo-font);letter-spacing:2px;}'
-  + '.pxo-set-master .pxo-toggle{width:100%;border-radius:0;'
-  + 'font-family:var(--pxo-font);letter-spacing:2px;'
-  + 'background:var(--pxo-bg3);color:var(--pxo-ink);'
-  + 'border:0;box-shadow:inset 0 0 0 2px var(--pxo-edge);}'
-  + '.pxo-set-master .pxo-toggle:hover{background:var(--pxo-edge);color:var(--pxo-neon);'
-  + 'box-shadow:inset 0 0 0 2px var(--pxo-neon);}'
-  // Hand the knob back to the pixel slider: the base sheet shapes this span as
-  // a small round lamp, which outranks `.pxo-toggle > span` on specificity and
-  // would otherwise leave a dot where the sliding switch belongs.
-  + '.pxo-set-master .pxo-toggle > span{width:34px;height:16px;border-radius:0;'
-  + 'background:var(--pxo-crt);box-shadow:inset 0 0 0 2px var(--pxo-edge);opacity:1;}'
-  + '.pxo-set-master .pxo-toggle[aria-pressed="true"] > span{background:var(--pxo-crt);}'
-  + '.pxo-set-master .pxo-note{color:var(--pxo-dim);font-size:10px;letter-spacing:1px;}'
+  + '.pxo-settings .pxo-set-master .pxo-note{color:var(--pxo-dim);font-size:10px;letter-spacing:1px;}'
   + '.pxo-set-card .pxo-set-row{margin-bottom:10px;}'
   + '.pxo-set-card label,.pxo-set-card > .pxo-set-row > span{color:var(--pxo-ink);'
   + 'font-size:11px;font-weight:700;letter-spacing:2px;}'

@@ -96,17 +96,15 @@ export function PixelOfficeSettings(props: {
       </div>
 
       <div className="pxo-set-master">
-        <div className="pxo-set-row">
-          <span>启用像素办公 / ENABLE SKIN</span>
-          <button
-            type="button"
-            className="pxo-toggle"
-            aria-pressed={scene.enabled}
-            onClick={() => { setEnabled(!scene.enabled) }}
-          >
-            <span />{scene.enabled ? 'ON' : 'OFF'}
-          </button>
-        </div>
+        <div className="pxo-set-row"><span>启用像素办公 / ENABLE SKIN</span></div>
+        <button
+          type="button"
+          className="pxo-toggle"
+          aria-pressed={scene.enabled}
+          onClick={() => { setEnabled(!scene.enabled) }}
+        >
+          <span />{scene.enabled ? 'ON' : 'OFF'}
+        </button>
         <p className="pxo-note">关闭后恢复原生界面；可随时在此重新启用。</p>
       </div>
 
