@@ -52,7 +52,7 @@
 
 ## 安装
 
-Pixel Office 是标准的 DSH Profile Bundle。需要 Node.js 22+，并且需要一个可运行 `dsh web` 的 DeepSeek Harness。
+Pixel Office 是标准的 DSH Profile Bundle。需要 Node.js 22+、pnpm 10+（版本由 `packageManager` 字段锁定，建议用 corepack 或系统包管理器安装），并且需要一个可运行 `dsh web` 的 DeepSeek Harness。
 
 ### 推荐方式：npx
 
@@ -62,7 +62,7 @@ Pixel Office 是标准的 DSH Profile Bundle。需要 Node.js 22+，并且需要
 npx @deepseek-ai/dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-Git 依赖会在安装时运行 `prepare`，自动构建 `lib/index.js` 和 `lib/client.js`。如果 pnpm 提示 Git 构建脚本未获许可，请将命令输出的精确 `allowBuilds` 条目加入 Web Profile 的 `pnpm-workspace.yaml`，然后重新运行安装命令。
+Git 依赖会在安装时运行 `prepare`，自动构建 `lib/index.js` 和 `lib/client.js`。pnpm 10 默认阻止依赖（包括 Git 依赖）的构建脚本，如果 pnpm 提示未获许可，请将命令输出的精确 `onlyBuiltDependencies` 条目加入 Web Profile 的 `pnpm-workspace.yaml`，然后重新运行安装命令。
 
 ### 已安装 DSH CLI
 
@@ -81,12 +81,12 @@ pnpm dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ### 本地开发
 
 ```powershell
-npm install
-npm run build
+pnpm install
+pnpm build
 npx @deepseek-ai/dsh plugin --profile web add .
 ```
 
-修改源码后重新运行 `npm run build`。插件注册表提供的是 `lib/client.js`，不是 `src/`。
+修改源码后重新运行 `pnpm build`。插件注册表提供的是 `lib/client.js`，不是 `src/`。
 
 安装、升级或卸载后重启当前 `dsh web` 进程并刷新页面。当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
 

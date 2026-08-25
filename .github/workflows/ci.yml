@@ -14,15 +14,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm typecheck
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       # The browser half must resolve React through the shell's module table.
       # Bundling a private copy gives the page a second React instance and
@@ -47,12 +50,18 @@ jobs:
           grep -q 'exports\.inject' lib/client.js || { echo 'inject not exported'; exit 1; }
       # The publish view is what `dsh plugin add` installs. It must carry both
       # runtime halves and the Bundle patch that inserts the Loader row.
+      # `pnpm pack --dry-run --json` differs from npm in two ways: the
+      # `prepare` script runs first and its lifecycle logs share stdout, and
+      # the JSON report is a flat array of `{ path }` file entries. Extract the
+      # array (first `[{` to last `]`) and map paths directly.
       - name: Verify publish contents
         run: |
-          npm pack --dry-run --json > pack.json
+          pnpm pack --dry-run --json > pack.json
           node --input-type=module -e '
             import fs from "node:fs";
-            const [{ files }] = JSON.parse(fs.readFileSync("pack.json", "utf8"));
+            const raw = fs.readFileSync("pack.json", "utf8");
+            const json = raw.slice(raw.search(/\[\s*\{/), raw.lastIndexOf("]") + 1);
+            const files = JSON.parse(json);
             const names = new Set(files.map(({ path }) => path));
             for (const required of ["lib/index.js", "lib/client.js", "cordis.patch.yml"]) {
               if (!names.has(required)) throw new Error(`publish artifact missing ${required}`);

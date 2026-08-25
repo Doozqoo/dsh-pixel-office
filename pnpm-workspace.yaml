@@ -1,0 +1,10 @@
+# DSH plugin workspace — this repository is a single-package pnpm workspace.
+# See https://pnpm.io/pnpm-workspace_yaml
+packages:
+  - .
+
+# pnpm 10 blocks dependency build scripts by default; this list whitelists
+# them. No current dependency ships an install/postinstall/preinstall script,
+# so it stays empty — add an entry here if a future dependency needs one
+# (e.g. esbuild, unrs-resolver).
+onlyBuiltDependencies: []

@@ -4,6 +4,10 @@
   "description": "Pixel Office: a digital/pixel-art workspace theme for the DSH web GUI — six top-down desks, a sticky-note planning board, and the real conversation embedded in a CRT monitor",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "repository": {
@@ -38,7 +42,7 @@
   },
   "scripts": {
     "build": "tsc -b && tsdown",
-    "prepare": "npm run build",
+    "prepare": "pnpm run build",
     "typecheck": "tsc -b --force",
     "clean": "node -e \"fs.rmSync('lib',{recursive:true,force:true})\""
   },
