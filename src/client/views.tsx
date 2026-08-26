@@ -1011,6 +1011,44 @@ export function DeskView(props: {
   useEffect(() => {
     if (cells > 0 && store.get().limit !== cells) store.set({ limit: cells })
   }, [cells, store])
+  // Minesweeper-style reveal: opening (or switching) a note wipes the CRT screen
+  // with a dark tile mask over the conversation slot, then each cell pops away on
+  // a random delay until the picture below is fully uncovered. Gated on desk mode
+  // + an open session so it never leaks over the top-level workgrid; skipped
+  // under reduced motion. Cells are injected at <body>'s top stacking context (no
+  // react-dom) so no desk/host container can bury them, then removed after a beat.
+  useEffect(() => {
+    if (scene.mode !== 'desk' || scene.opened === null) return
+    if (scene.intensity === 'calm') return
+    // The conversation is host-portaled, so it is NOT inside .pxo-root — locate
+    // it globally. The desk-mode gate above keeps this from firing in top view.
+    const slot = document.querySelector('[data-slot="conversation"]')
+    if (slot == null) return
+    const r: DOMRect = slot.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) return
+    const host = document.createElement('div')
+    host.className = 'pxo-reveal'
+    host.style.left = `${r.left}px`
+    host.style.top = `${r.top}px`
+    host.style.width = `${r.width}px`
+    host.style.height = `${r.height}px`
+    document.body.appendChild(host)
+    const cols = Math.max(1, Math.round(r.width / 34))
+    const rows = Math.max(1, Math.round(r.height / 34))
+    host.style.gridTemplateColumns = `repeat(${cols}, 1fr)`
+    host.style.gridTemplateRows = `repeat(${rows}, 1fr)`
+    const frag = document.createDocumentFragment()
+    for (let i = 0; i < cols * rows; i += 1) {
+      const cell = document.createElement('div')
+      cell.className = 'pxo-cell'
+      cell.style.setProperty('--pxo-cell-delay', `${(Math.random() * 1.1).toFixed(3)}s`)
+      cell.style.setProperty('--pxo-cell-dur', `${(0.15 + Math.random() * 0.22).toFixed(3)}s`)
+      frag.appendChild(cell)
+    }
+    host.appendChild(frag)
+    const t = window.setTimeout(() => host.remove(), 2000)
+    return () => { window.clearTimeout(t); host.remove() }
+  }, [scene.mode, scene.opened, scene.intensity])
   const order = scene.order[desk.id] ?? []
   const drag = scene.drag
   const used = order.filter(cell => cell !== null).length

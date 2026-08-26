@@ -1136,11 +1136,27 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
   + '100%{opacity:0;transform:translateX(-6px)}}'
 
 /** The complete stylesheet text. */
+/**
+ * Minesweeper-style session reveal. When a note opens, DeskView posts a dark
+ * tile mask exactly over the conversation slot; each `.pxo-cell` pops away on a
+ * random delay until the screen below is fully uncovered. Geometry is set
+ * inline by the view layer, so these rules only paint (position/box inline).
+ */
+const REVEAL =
+  '.pxo-reveal{position:fixed;display:grid;gap:2px;overflow:hidden;'
+  + 'pointer-events:none;z-index:2147483000;}'
+  + '.pxo-reveal > .pxo-cell{background:linear-gradient(180deg,#050d0b,#02060a);'
+  + 'box-shadow:inset 0 0 8px rgba(92,255,158,.14);'
+  + 'animation:pxo-pop var(--pxo-cell-dur,.2s) cubic-bezier(.4,0,.6,1) forwards;'
+  + 'animation-delay:var(--pxo-cell-delay,0s);}'
+  + '@keyframes pxo-pop{from{opacity:1;transform:scale(1)}'
+  + 'to{opacity:0;transform:scale(.12)}}'
+
 export const CSS: string = [
   GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
   DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, PREVIEW, STACK, DIALOGS,
-  TOAST, SETTINGS, STATES, MOTION, LINKLOST,
+  TOAST, SETTINGS, STATES, MOTION, LINKLOST, REVEAL,
   KEYFRAMES,
 ].join('\n')
 
