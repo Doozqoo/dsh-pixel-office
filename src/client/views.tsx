@@ -141,19 +141,6 @@ export function PixelOfficeSettings(props: {
   )
 }
 
-/** Full-bleed CRT "NO CARRIER" overlay shown when the host transport drops. */
-function LinkLost(): ReactNode {
-  return (
-    <div className="pxo-lost" role="alert" aria-live="assertive">
-      <div className="pxo-lost-in">
-        <span className="ttl">NO CARRIER</span>
-        <span className="sub">链路中断 · 正在尝试重新握手</span>
-        <span className="cursor" />
-      </div>
-    </div>
-  )
-}
-
 /** Pointer-targets populated by the planning-board drag handlers. */
 const SLOTS: Registry = {}
 /** Pointer-targets populated by the desk-grid drag handlers. */
@@ -698,7 +685,8 @@ export function TopView(props: {
         01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
       </div>
       <div className="pxo-scan" />
-      {scene.link === 'lost' ? <LinkLost /> : null}
+      {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
+
     </div>
   )
 }
@@ -1209,7 +1197,8 @@ export function DeskView(props: {
       />
 
       <div className="pxo-scan" />
-      {scene.link === 'lost' ? <LinkLost /> : null}
+      {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
+
 
       {preview === null ? null : (() => {
         const sid = preview.sid

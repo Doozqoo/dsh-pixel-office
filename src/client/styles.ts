@@ -716,24 +716,6 @@ const STACK = '.pxo-stack-zone{position:fixed;left:var(--pxo-bx);'
   + '.pxo-stack-arrow{font-size:18px;color:var(--pxo-yellow);font-weight:700;letter-spacing:3px;}'
   + '.pxo-stack-hint{color:var(--pxo-faint);font-size:10px;letter-spacing:1px;}'
 
-/* ----------------------------------------------------------------------------
- * Link-lost overlay: what the office shows when the host transport resets.
- * A full-bleed red CRT "NO CARRIER" so a dropped link reads as a dead terminal
- * rather than a silently frozen room. Pointer-events pass through; the toast
- * carries the spoken announcement.
- * --------------------------------------------------------------------------*/
-const LINKLOST = '.pxo-lost{position:fixed;inset:0;z-index:70;pointer-events:none;'
-  + 'display:flex;align-items:center;justify-content:center;'
-  + 'background:repeating-linear-gradient(0deg,rgba(255,60,60,.10) 0 2px,transparent 2px 4px),'
-  + 'radial-gradient(120% 80% at 50% 50%,rgba(40,4,8,.55),rgba(8,2,4,.86));'
-  + 'animation:pxo-fade .2s ease-out both;}'
-  + '.pxo-lost-in{display:flex;flex-direction:column;align-items:center;gap:10px;'
-  + 'text-align:center;padding:0 24px;}'
-  + '.pxo-lost .ttl{font-size:26px;font-weight:700;letter-spacing:8px;color:var(--pxo-red);'
-  + 'text-shadow:0 0 18px rgba(255,92,92,.6);animation:pxo-blink 1.1s steps(2) infinite;}'
-  + '.pxo-lost .sub{font-size:11px;letter-spacing:2px;color:#ffb0b0;}'
-  + '.pxo-lost .cursor{width:9px;height:15px;background:var(--pxo-red);opacity:.7;'
-  + 'animation:pxo-blink 1.1s steps(2) infinite;}'
 
 /* ----------------------------------------------------------------------------
  * Dialogs, drag ghost, settings.
@@ -1145,8 +1127,7 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
 const REVEAL =
   '.pxo-reveal{position:fixed;display:grid;gap:2px;overflow:hidden;'
   + 'pointer-events:none;z-index:2147483000;}'
-  + '.pxo-reveal > .pxo-cell{background:linear-gradient(180deg,#050d0b,#02060a);'
-  + 'box-shadow:inset 0 0 8px rgba(92,255,158,.14);'
+  + '.pxo-reveal > .pxo-cell{background:var(--pxo-bg);'
   + 'animation:pxo-pop var(--pxo-cell-dur,.2s) cubic-bezier(.4,0,.6,1) forwards;'
   + 'animation-delay:var(--pxo-cell-delay,0s);}'
   + '@keyframes pxo-pop{from{opacity:1;transform:scale(1)}'
@@ -1156,7 +1137,7 @@ export const CSS: string = [
   GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
   DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, PREVIEW, STACK, DIALOGS,
-  TOAST, SETTINGS, STATES, MOTION, LINKLOST, REVEAL,
+  TOAST, SETTINGS, STATES, MOTION, REVEAL,
   KEYFRAMES,
 ].join('\n')
 
