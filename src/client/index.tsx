@@ -259,6 +259,13 @@ export function apply(ctx: ClientContext): void {
         }
         return
       }
+      // The workspace list has not published yet (async mount) or holds no
+      // workspaces: leave the restored layout alone. With an empty `ids` the
+      // cleanup below would null EVERY cell of the persisted grid — no id is
+      // "live" yet — and the next publish re-fills it in list order, silently
+      // discarding the arrangement the user saved (their 2-4-6-8 became
+      // 1-2-3-4 after every reload).
+      if (ids.length === 0) return
       const next = fitInto(store.get().layout, ids, DESKS, false)
       if (!sameGrid(next, store.get().layout)) store.set({ layout: next })
     }, [deskIdKey, scene.pendingLayout])
