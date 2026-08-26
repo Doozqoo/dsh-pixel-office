@@ -74,6 +74,18 @@ export interface SceneState {
    * authority for it.
    */
   readonly pending: { readonly wsId: string; readonly pos: number } | null
+  /**
+   * A workspace creation in flight with an aimed cell.
+   *
+   * Same race as {@link pending}, one level up: `workspaces.create` publishes
+   * the new id asynchronously and returns nothing usable, so the top-view
+   * reconcile would sweep the fresh workspace into the lowest free cell no
+   * matter which empty station the user clicked. While this is set, the layout
+   * reconcile waits for the id that is NOT in `before` (the desk-id snapshot
+   * taken when creation started) and drops it at `pos`. It is volatile runtime
+   * state and deliberately not persisted.
+   */
+  readonly pendingLayout: { readonly pos: number; readonly before: string } | null
   /** Short-lived status or error message announced to assistive technology. */
   readonly notice: string | null
   /**
@@ -111,6 +123,7 @@ const INITIAL: SceneState = {
   grid: true,
   transition: 'idle',
   pending: null,
+  pendingLayout: null,
   notice: null,
   activity: {},
   drag: null,

@@ -425,7 +425,7 @@ function DeskTile(props: {
   readonly onEnter: () => void
   readonly onClear: () => void
   readonly onRename: () => void
-  readonly onCreate: () => void
+  readonly onCreate: (index: number) => void
 }): ReactNode {
   const state = props.isEmpty
     ? 'off'
@@ -459,7 +459,7 @@ function DeskTile(props: {
       onKeyDown={(event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()
-        if (props.isEmpty) props.onCreate()
+        if (props.isEmpty) props.onCreate(props.index)
         else props.onEnter()
       }}
     >
@@ -530,7 +530,7 @@ function DeskTile(props: {
               type="button"
               className="pxo-empty-cta"
               title="点击或拖拽项目到此创建"
-              onClick={(e) => { e.stopPropagation(); props.onCreate() }}
+              onClick={(e) => { e.stopPropagation(); props.onCreate(props.index) }}
             >
               <span className="plus">+</span>
               <span className="label">新建工位 / NEW STATION</span>
@@ -548,7 +548,7 @@ export function TopView(props: {
   readonly running: Readonly<Record<string, boolean>>
   /** Unarchived, published note count per workspace id — what the matrix pins. */
   readonly liveCounts: Readonly<Record<string, number>>
-  readonly onCreate: () => void
+  readonly onCreate: (index?: number) => void
   readonly onEnter: (wsId: string) => void
   readonly onClear: (wsId: string) => void
   readonly onRename: (wsId: string) => void
@@ -626,7 +626,7 @@ export function TopView(props: {
           >
             LIVE · 在线节点
           </button>
-          <button type="button" className="pxo-btn-new" onClick={props.onCreate}>
+          <button type="button" className="pxo-btn-new" onClick={() => { props.onCreate() }}>
             + 新建工位
           </button>
         </div>

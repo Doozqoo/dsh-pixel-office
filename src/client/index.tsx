@@ -240,9 +240,28 @@ export function apply(ctx: ClientContext): void {
     const deskIdKey = desks.map(d => d.id).join(',')
     useEffect(() => {
       const ids = deskIdKey === '' ? [] : deskIdKey.split(',')
+      // A workspace creation is mid-flight with an aimed cell: hold the
+      // reconcile so the fresh id is not swept into the lowest free cell,
+      // and place it at the aimed cell once it publishes.
+      const aimed = scene.pendingLayout
+      if (aimed !== null) {
+        const before = aimed.before === '' ? [] : aimed.before.split(',')
+        const fresh = ids.find(id => !before.includes(id))
+        if (fresh !== undefined) {
+          const layout = store.get().layout.slice()
+          // Drop at the aimed cell unless another write took it meanwhile;
+          // then fall back to the lowest free cell so creation never fails.
+          const free = layout[aimed.pos] === null || layout[aimed.pos] === undefined
+            ? aimed.pos
+            : layout.indexOf(null)
+          if (free >= 0) layout[free] = fresh
+          store.set({ layout, pendingLayout: null })
+        }
+        return
+      }
       const next = fitInto(store.get().layout, ids, DESKS, false)
       if (!sameGrid(next, store.get().layout)) store.set({ layout: next })
-    }, [deskIdKey])
+    }, [deskIdKey, scene.pendingLayout])
 
     // Drop stored grids and labels for workspaces and sessions that are gone.
     // Restored state can name ids that no longer exist, and without this the
@@ -289,7 +308,7 @@ export function apply(ctx: ClientContext): void {
       if (missing) store.set({ mode: 'top', active: null })
     }, [missing])
 
-    const createWorkspace = async () => {
+    const createWorkspace = async (pos?: number) => {
       if (workspaces === undefined) {
         store.set({ notice: '工作区服务离线 / WORKSPACE LINK OFFLINE' })
         return
@@ -298,14 +317,22 @@ export function apply(ctx: ClientContext): void {
         store.set({ notice: '正在扫描本地目录… / SCANNING DIRECTORY' })
         const path = await workspaces.pickDirectory()
         if (path === null || path === '') {
-          store.set({ notice: null })
+          store.set({ notice: null, pendingLayout: null })
           return
+        }
+        // Claim the aimed cell BEFORE awaiting. The workspace list can publish
+        // the new id while the create promise is pending; without the lock the
+        // layout reconcile would sweep it into the lowest free cell instead of
+        // the empty station the user clicked. `before` is the desk-id snapshot
+        // at creation time, so the reconcile can recognise the fresh id.
+        if (pos !== undefined) {
+          store.set({ pendingLayout: { pos, before: deskIdKey } })
         }
         await workspaces.create({ path })
         store.set({ notice: '神经链接已建立 / WORKSPACE LINKED' })
       } catch (error) {
         console.error(`${PLUGIN_ID}: workspace creation failed`, error)
-        store.set({ notice: '链接失败，请重试 / LINK FAILED' })
+        store.set({ notice: '链接失败，请重试 / LINK FAILED', pendingLayout: null })
       }
     }
 
@@ -463,7 +490,7 @@ export function apply(ctx: ClientContext): void {
                 desks={desks}
                 running={running}
                 liveCounts={liveCounts}
-                onCreate={() => { void createWorkspace() }}
+                onCreate={(index) => { void createWorkspace(index) }}
                 onEnter={enterDesk}
                 onClear={clearWorkspace}
                 onRename={renameWorkspaceReq}
