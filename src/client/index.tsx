@@ -429,6 +429,19 @@ export function apply(ctx: ClientContext): void {
       return () => { clearTimeout(id) }
     }, [scene.notice])
 
+    // Full-bleed CRT scanline layer, injected at <body>'s top stacking context
+    // (same pattern as the session reveal) so the CRT monitor — which paints an
+    // opaque `--pxo-crt` backdrop at z-index 40 while a session is open — can
+    // never bury the scanlines under the conversation. `pointer-events:none`
+    // keeps it a pure film layer; nothing about the UI interaction changes.
+    useEffect(() => {
+      if (!scene.enabled) return
+      const el = document.createElement('div')
+      el.className = 'pxo-scan'
+      document.body.appendChild(el)
+      return () => { el.remove() }
+    }, [scene.enabled])
+
     // Skin off: render nothing, so the shipped GUI is untouched rather than
     // covered. Placed after every hook above — an early return before them
     // would change the hook order between renders and crash React.

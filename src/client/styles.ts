@@ -153,7 +153,14 @@ const ROOT = '.pxo-root{font-family:var(--pxo-font);pointer-events:none;'
   // Rolling CRT scanlines — pinned overlay, the "film grain" of the office.
   // Two bands at different speeds: the fine raster never moves, the soft bloom
   // sweeps, so the screen feels alive without any element jumping.
-  + '.pxo-scan{position:fixed;inset:0;pointer-events:none;z-index:55;}'
+  //
+  // z-index 5000: the node is injected at <body>'s top stacking context (see
+  // `Scene` in index.tsx), so it sorts against the whole document — the CRT
+  // monitor paints an opaque `--pxo-crt` backdrop at 40 while a session is
+  // open and would otherwise bury the sweep under the conversation. 5000
+  // clears the host's own layer ceiling (dialogs portal at 1100) and nothing
+  // else in the skin comes close. pointer-events:none keeps it interaction-free.
+  + '.pxo-scan{position:fixed;inset:0;pointer-events:none;z-index:5000;}'
   + '.pxo-scan::before{content:"";position:fixed;inset:0;'
   + 'background:repeating-linear-gradient(0deg,rgba(0,0,0,.26) 0 1px,transparent 1px 3px);'
   + 'mix-blend-mode:multiply;}'

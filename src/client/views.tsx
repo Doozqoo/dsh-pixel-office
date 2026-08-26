@@ -684,8 +684,8 @@ export function TopView(props: {
       <div className="pxo-caption">
         01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
       </div>
-      <div className="pxo-scan" />
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
+      {null /* removed: <div className="pxo-scan" /> — scanlines now injected at <body> top by Scene */}
 
     </div>
   )
@@ -1196,9 +1196,8 @@ export function DeskView(props: {
         consumed={props.consumed}
       />
 
-      <div className="pxo-scan" />
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
-
+      {null /* removed: <div className="pxo-scan" /> — scanlines now injected at <body> top by Scene */}
 
       {preview === null ? null : (() => {
         const sid = preview.sid
