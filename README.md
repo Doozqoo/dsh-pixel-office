@@ -52,43 +52,67 @@
 
 ## 安装
 
-Pixel Office 是标准的 DSH Profile Bundle。需要 Node.js 22+、pnpm 10+（版本由 `packageManager` 字段锁定，建议用 corepack 或系统包管理器安装），并且需要一个可运行 `dsh web` 的 DeepSeek Harness。
+Pixel Office 是标准的 DSH Profile Bundle。安装的本质是把一个声明了 `dsh.bundle.patch` 的包加为某个 dsh profile 的依赖，dsh 会把它激活进 `dsh.profile.bundles` 层序，成为一条 Loader 入口。命令背地里就是 `pnpm add`，跑在当前 profile 目录里。
 
-### 推荐方式：npx
+**前置条件（所有方式共用）**
 
-无需全局安装 CLI，直接运行：
+- Node.js 22+（版本由完整 `engines` 锁定）。
+- pnpm 10+（`packageManager` 字段锁定，建议用 corepack 或系统包管理器装同版本）。
+- 一个能运行 `dsh web` 的 DeepSeek Harness。
+
+**profile 目录**：默认 `$DSH_HOME/profiles/web`（未设 `DSH_HOME` 时即 `~/.dsh/profiles/web`）。`dsh plugin --profile web ...` 首次使用会自动初始化它。
+
+装、升、卸之后都要**重启当前 `dsh web` 进程并刷新页面**——当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
+
+### 给其他人/在任意机器上使用：从已发布仓库安装
+
+仓库在 GitHub。只要仓库是公开的（或本机对该私有仓库有访问权限），即可用 Git 依赖安装。不需要全局装 CLI，npx 会临时拉取：
 
 ```powershell
 npx @deepseek-ai/dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-Git 依赖会在安装时运行 `prepare`，自动构建 `lib/index.js` 和 `lib/client.js`。pnpm 10 默认阻止依赖（包括 Git 依赖）的构建脚本，如果 pnpm 提示未获许可，请将命令输出的精确 `onlyBuiltDependencies` 条目加入 Web Profile 的 `pnpm-workspace.yaml`，然后重新运行安装命令。
-
-### 已安装 DSH CLI
-
-如果系统已经安装了 `@deepseek-ai/dsh`，可以使用简写命令：
+若系统已装 `@deepseek-ai/dsh`，可简写：
 
 ```powershell
 dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-如果使用 DeepSeek Harness 源码仓库，则从仓库根目录运行：
+若正在 DeepSeek Harness 源码仓库里，则从仓库根目录运行：
 
 ```powershell
 pnpm dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
 ```
 
-### 本地开发
+Git 依赖会在安装时运行该包的 `prepare`（即 `pnpm run build`）就地构建 `lib/`。pnpm ≥10 默认拦截依赖的生命周期脚本：如果 pnpm 提示未获许可，请把 pnpm 打印的那条精确 key 加入 **该 profile 的 `pnpm-workspace.yaml`**（`$DSH_HOME/profiles/web/pnpm-workspace.yaml`）的 `allowBuilds`，再重跑安装命令（pnpm 11 的配置键是 `allowBuilds`，旧文档写过的 `onlyBuiltDependencies` 已弃用）。
+
+> `github:Doozqoo/...` 解析的是**仓库名**；装进 profile 后，后续 update/remove 用的是它的**包名** `dsh-client-pixel-office`。
+
+### 本地开发调试（Harness 源码仓库 + 本地 checkout）
+
+如果你同时拿着 DeepSeek Harness 源码仓库和这份插件的本地 checkout，用 path 依赖把它链进 profile，改完构建再重启看效果：
 
 ```powershell
+# 1) 先构建插件——注册表认 lib/client.js，不是 src/
+cd D:\...\dsh-pixel-office
 pnpm install
 pnpm build
-npx @deepseek-ai/dsh plugin --profile web add .
+
+# 2) 从 Harness 源码仓库根目录，把这份 checkout 加进 web profile（给绝对路径）
+cd D:\...\deepseek-harness
+pnpm dsh plugin --profile web add "D:\...\dsh-pixel-office"
 ```
 
-修改源码后重新运行 `pnpm build`。插件注册表提供的是 `lib/client.js`，不是 `src/`。
+path 依赖是**链接到 checkout**（不是拷贝）：改完源码重新 `pnpm build` 就地刷新 `lib/`，然后重启 `dsh web` 并硬刷新页面即可，无需反复 remove + add。构建由你自己手动跑；若 pnpm 仍因要跑 `prepare` 报未获许可，照上面一样把它加进该 profile 的 `allowBuilds` 再重试。
 
-安装、升级或卸载后重启当前 `dsh web` 进程并刷新页面。当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
+> **Windows：路径别带空格。** `dsh plugin` 在 Windows 上是把参数经 shell 转给 pnpm 的，含空格的路径会被从空格处拆断，装上 `Program`、`dsh-pixel-office` 这类残缺依赖，之后 `remove <真包名>` 会报"no such dependency"。路径含空格时，先建一个**无空格路径的 junction 指向 checkout**，再 add；已经从 Harness 源码仓库跑时，可直接调用 cli 的 bin 避免 pnpm 在仓库根目录去做整仓安装：
+> ```powershell
+> New-Item -ItemType Junction -Path "C:\Users\you\dsh-pixel-office" -Target "D:\Program Files\dsh\dsh-pixel-office" -Force
+> node --import tsx/esm apps\cli\src\bin.ts plugin --profile web add C:\Users\you\dsh-pixel-office
+> ```
+> （`pnpm dsh plugin ...` 等价展开就是上面这个 node 命令；直接调 bin 时，pnpm 只在 profile 目录跑，不会去动 Harness 根目录缺失的可选平台依赖。）
+
+想确认装没装进层序，可看 profile 的 `package.json` 依赖与 `dsh.profile.bundles` 列表，或运行 `pnpm dsh --profile web --dump-config` 查看合成后的入口树里是否出现 `pixel-office` 行。
 
 ## 升级
 
@@ -96,15 +120,23 @@ npx @deepseek-ai/dsh plugin --profile web add .
 npx @deepseek-ai/dsh plugin --profile web update dsh-client-pixel-office
 ```
 
-GitHub 安装可重新运行 `add` 命令，pnpm 会更新锁定的 Git revision。
+GitHub 安装可重跑 `add` 命令，pnpm 会更新锁定的 Git revision。本地 path 开发模式没有"升级"概念——直接改源码 + `pnpm build` 就是新版本。
 
 ## 卸载
+
+从已发布仓库安装的：
 
 ```powershell
 npx @deepseek-ai/dsh plugin --profile web remove dsh-client-pixel-office
 ```
 
-该命令会删除 Profile 依赖并从 Bundle layer 列表移除 Pixel Office。重启 `dsh web` 后，Cordis 会撤销插件持有的样式表、主题覆盖和 slot 注册，原生界面完整恢复。浏览器 `localStorage` 中的布局偏好默认保留，方便以后重装；需要清除数据时再通过浏览器站点数据管理删除。
+本地开发 / Harness 源码仓库里则从仓库根目录执行：
+
+```powershell
+pnpm dsh plugin --profile web remove dsh-client-pixel-office
+```
+
+`remove` 会删除该 profile 依赖并把插件移出 `dsh.profile.bundles` 层序。重启 `dsh web` 后，Cordis 就会撤销插件持有的样式表、主题覆盖和 slot 注册，原生界面完整恢复。浏览器 `localStorage` 中的布局偏好默认保留，便于以后重装续用；需要清除数据时再通过浏览器站点数据管理删除。
 
 ## 三个不显然的实现决定
 
