@@ -31,9 +31,9 @@ const GEOMETRY = ':root{'
   // aligned: hard-coding the screen height separately is how they drifted
   // 120px apart, which let the CRT's neck and PWR badge cover the stack.
   + '--pxo-sy:108px;--pxo-dock:150px;'
-  + '--pxo-sx:52vw;--pxo-sw:44vw;'
+  + '--pxo-sx:46.15vw;--pxo-sw:50.6vw;'
   + '--pxo-sh:calc(100vh - var(--pxo-sy) - var(--pxo-dock));'
-  + '--pxo-bx:2.5vw;--pxo-bw:48vw;'
+  + '--pxo-bx:3.25vw;--pxo-bw:41.4vw;'
   // Reserved band along the bottom of the top view. The caption strip lives
   // inside it and the desk grid stops at its edge, so the last row cannot
   // overlap the glyphs the way it did when the grid stopped at a bare 30px.
@@ -111,7 +111,7 @@ const CONVERSATION = 'body:has(.pxo-root[data-mode="top"]) [data-slot="conversat
   + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"]{'
   + 'display:block!important;position:fixed!important;'
   + 'left:var(--pxo-sx)!important;top:var(--pxo-sy)!important;'
-  + 'width:var(--pxo-sw)!important;height:var(--pxo-sh)!important;'
+  + 'width:var(--pxo-sw)!important;height:calc(var(--pxo-sh) + 30px)!important;'
   + 'z-index:40;overflow:hidden;background:var(--pxo-crt);color:var(--pxo-ink);'
   + 'box-shadow:inset 0 0 46px rgba(92,255,158,.08)!important;}'
   + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] > *{width:100%!important;height:100%!important;}'
@@ -543,7 +543,7 @@ const DESK_CHROME = // Side bands the CRT cutout floats inside (deep navy + grid
  * CRT bezel: a thick neon rim around the conversation slot.
  * --------------------------------------------------------------------------*/
 const BEZEL = '.pxo-bezel{position:fixed;left:var(--pxo-sx);top:var(--pxo-sy);'
-  + 'width:var(--pxo-sw);height:var(--pxo-sh);pointer-events:none;z-index:45;'
+  + 'width:var(--pxo-sw);height:calc(var(--pxo-sh) + 30px);pointer-events:none;z-index:45;'
   + 'box-shadow:0 0 0 4px var(--pxo-edge),0 0 0 7px var(--pxo-bg3),0 0 0 11px var(--pxo-edge),'
   + 'inset 0 0 0 1px var(--pxo-cyan),0 0 38px var(--pxo-glow);background:transparent;}'
   // The bottom "neck" of the CRT — a 16px slab extending below the screen.
@@ -563,7 +563,7 @@ const BEZEL = '.pxo-bezel{position:fixed;left:var(--pxo-sx);top:var(--pxo-sy);'
  * hidden — the two are mutually exclusive by construction.
  * --------------------------------------------------------------------------*/
 const STANDBY = '.pxo-standby{position:fixed;left:var(--pxo-sx);top:var(--pxo-sy);'
-  + 'width:var(--pxo-sw);height:var(--pxo-sh);z-index:42;pointer-events:none;'
+  + 'width:var(--pxo-sw);height:calc(var(--pxo-sh) + 30px);z-index:42;pointer-events:none;'
   + 'display:none;align-items:center;justify-content:center;'
   + 'background:var(--pxo-crt);'
   // Faint scanline wash so the dark screen still reads as a powered CRT.
