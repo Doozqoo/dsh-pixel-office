@@ -10,19 +10,19 @@
 
 ### 俯视图：24 工位网格
 
-![俯视图](assets/top-view.png)
+![俯视图](assets/top-view.jpeg)
 
 每张卡显示工位编号、IDLE/LIVE 状态、便利贴计数、运行时指示灯与一个重命名 / 清空按钮。空位点击新建工作区。
 
 ### 桌面正视图：计划板 + CRT 显示器
 
-![桌面正视图](assets/desk-view.png)
+![桌面正视图](assets/desk-view.jpeg)
 
 进入工位看到一张完整办公桌：左侧"任务矩阵 / MISSION MATRIX"计划板（每张便利贴 = 一个会话，显示标题、YOU/AI/SYS 角标和真实末条消息），右侧 CRT 显示器（待机黑屏，点便利贴才接入）。底部"新便利贴堆 / NEW STICKIES"等待被拖到计划板空位。
 
 ### 设置：宿主面板里的 Pixel Office 分区
 
-![设置](assets/settings.png)
+![设置](assets/settings.jpeg)
 
 插件在宿主原生设置面板中注册了一个独立分区，提供总开关、动效强度（CALM / OVERDRIVE）、网格开关三项偏好。
 
