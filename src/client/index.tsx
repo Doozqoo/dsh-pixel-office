@@ -7,7 +7,7 @@
  * shipped theme returns with no page reload.
  * @module dsh-client-pixel-office/client
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
@@ -173,7 +173,11 @@ export function apply(ctx: ClientContext): void {
     const applySkin = (on: boolean): void => {
       if (on && removeSkin === undefined) {
         removeSkin = insertStyles()
-        removeTokens = theme?.overrideTokens(PLUGIN_ID, pairTokens(DARK_TOKENS, LIGHT_TOKENS))
+        // Force the Pixel Office surface to stay dark regardless of the host's
+        // global Appearance preference. Passing DARK_TOKENS for both schemes
+        // makes the theme override resolve to the dark palette in every mode;
+        // the rest of the application can still switch themes freely.
+        removeTokens = theme?.overrideTokens(PLUGIN_ID, pairTokens(DARK_TOKENS, DARK_TOKENS))
       } else if (!on && removeSkin !== undefined) {
         removeSkin(); removeTokens?.(); removeSkin = undefined; removeTokens = undefined
       }
@@ -238,8 +242,16 @@ export function apply(ctx: ClientContext): void {
     }
 
     const deskIdKey = desks.map(d => d.id).join(',')
+    // Tracks whether the workspace list has ever published at least one
+    // workspace. The reconcile below must NOT wipe the persisted grid on the
+    // very first render (the list is async and arrives empty before it fills),
+    // or a reload would discard the saved arrangement. But once we have seen a
+    // real workspace and the list later becomes empty — i.e. every workspace
+    // was deleted — the grid MUST be cleared so no occupied station lingers.
+    const everHadWorkspaces = useRef(false)
     useEffect(() => {
       const ids = deskIdKey === '' ? [] : deskIdKey.split(',')
+      if (ids.length > 0) everHadWorkspaces.current = true
       // A workspace creation is mid-flight with an aimed cell: hold the
       // reconcile so the fresh id is not swept into the lowest free cell,
       // and place it at the aimed cell once it publishes.
@@ -265,7 +277,16 @@ export function apply(ctx: ClientContext): void {
       // "live" yet — and the next publish re-fills it in list order, silently
       // discarding the arrangement the user saved (their 2-4-6-8 became
       // 1-2-3-4 after every reload).
-      if (ids.length === 0) return
+      if (ids.length === 0) {
+        // All workspaces deleted: clear any stale stations so the board
+        // returns to the empty-chair state instead of keeping one occupied
+        // cell (the bug where deleting every workspace left a residual desk).
+        if (everHadWorkspaces.current) {
+          const cleared = store.get().layout.slice().fill(null)
+          if (!sameGrid(cleared, store.get().layout)) store.set({ layout: cleared })
+        }
+        return
+      }
       const next = fitInto(store.get().layout, ids, DESKS, false)
       if (!sameGrid(next, store.get().layout)) store.set({ layout: next })
     }, [deskIdKey, scene.pendingLayout])
@@ -377,7 +398,9 @@ export function apply(ctx: ClientContext): void {
     // `both` fill left .pxo-fill collapsed at scaleY(0) — a black screen with
     // no way back.
     const leaveDesk = () => {
-      store.set({ mode: 'top', active: null, opened: null, transition: 'entering', notice: null })
+      // Closing any open modal so the dialog (e.g. edit/rename/new) does not
+      // stay visible after leaving the desk and returning to the office view.
+      store.set({ mode: 'top', active: null, opened: null, modal: null, transition: 'entering', notice: null })
       later(() => {
         if (store.get().mode === 'top') store.set({ transition: 'idle' })
       }, 420)

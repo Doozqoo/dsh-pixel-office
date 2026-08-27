@@ -1266,18 +1266,39 @@ interface ModalProps {
   readonly danger?: boolean
   /** `board` pins the dialog to the planning-board rect instead of the viewport. */
   readonly anchor?: 'board' | 'viewport'
+  /** Close the dialog when the user presses/taps outside the modal card. */
+  readonly closeOnOutsideClick?: boolean
 }
 
 /** A pixel-framed dialog. */
 function Modal(props: ModalProps): ReactNode {
-  const { anchor = 'viewport', onCancel } = props
+  const { anchor = 'viewport', onCancel, closeOnOutsideClick } = props
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Global outside-click close: works for both viewport and board-anchored
+  // dialogs, including the planning-board modal where the backdrop only covers
+  // the board rectangle and a click on the surrounding chrome should also close.
+  useEffect(() => {
+    if (closeOnOutsideClick !== true) return
+    const handler = (e: PointerEvent): void => {
+      const content = contentRef.current
+      const target = e.target
+      if (content === null || !(target instanceof Node)) return
+      if (content.contains(target)) return
+      e.preventDefault()
+      onCancel()
+    }
+    document.addEventListener('pointerdown', handler, true)
+    return () => { document.removeEventListener('pointerdown', handler, true) }
+  }, [closeOnOutsideClick, onCancel])
+
   return (
     <div
       className={anchor === 'board' ? 'pxo-modal-bg board' : 'pxo-modal-bg'}
       role="presentation"
       onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel() }}
     >
-      <div className="pxo-modal" role="dialog" aria-modal="true" aria-label={props.title}>
+      <div ref={contentRef} className="pxo-modal" role="dialog" aria-modal="true" aria-label={props.title}>
         <h3>{props.title}</h3>
         {props.desc === undefined ? null : <p>{props.desc}</p>}
         {props.children}
@@ -1309,6 +1330,7 @@ function InputModal(props: {
   readonly initial?: string
   readonly okText?: string
   readonly anchor?: 'board' | 'viewport'
+  readonly closeOnOutsideClick?: boolean
   readonly onCancel: () => void
   readonly onOk: (text: string) => void
 }): ReactNode {
@@ -1322,6 +1344,7 @@ function InputModal(props: {
       onCancel={props.onCancel}
       onOk={submit}
       okText={props.okText ?? '贴上'}
+      {...(props.closeOnOutsideClick === true ? { closeOnOutsideClick: true } : {})}
     >
       <input
         className="pxo-input"
@@ -1360,6 +1383,7 @@ export function Dialogs(props: {
         <InputModal
           title="✎ 新便利贴"
           desc="填写这张便利贴的展示内容，确认后在当前工作区创建一个新会话。"
+          closeOnOutsideClick
           onCancel={close}
           onOk={(text) => { props.onAdd(modal.pos, text) }}
         />
@@ -1404,7 +1428,7 @@ export function Dialogs(props: {
       return (
         <Modal
           title="⌫ 清空工位？"
-          desc={`将删除工作区「${modal.title}」，该工位恢复为空座椅。其会话记录本身不会被删除。`}
+          desc={`将删除工作区「${modal.title}」，该工位恢复为空座椅。其下的会话会一并归档，不再显示（会话日志本身保留）。`}
           cancelText="保留"
           okText="清空"
           danger
@@ -1419,6 +1443,7 @@ export function Dialogs(props: {
           desc="为这台工作站重新命名，仅更改显示标题，不影响其会话记录。"
           initial={modal.title}
           okText="重命名"
+          closeOnOutsideClick
           onCancel={close}
           onOk={(text) => { close(); props.onRename(modal.wsId, text) }}
         />

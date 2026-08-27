@@ -1132,8 +1132,11 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
  * inline by the view layer, so these rules only paint (position/box inline).
  */
 const REVEAL =
+  // z-index 70: above the desk conversation (40) and header (60) so the
+  // minesweeper wipe still covers the screen, but below plugin modals (90)
+  // and the host's settings/dialog overlays so menus and dialogs stay readable.
   '.pxo-reveal{position:fixed;display:grid;gap:2px;overflow:hidden;'
-  + 'pointer-events:none;z-index:2147483000;}'
+  + 'pointer-events:none;z-index:70;}'
   + '.pxo-reveal > .pxo-cell{background:var(--pxo-bg);'
   + 'animation:pxo-pop var(--pxo-cell-dur,.2s) cubic-bezier(.4,0,.6,1) forwards;'
   + 'animation-delay:var(--pxo-cell-delay,0s);}'
