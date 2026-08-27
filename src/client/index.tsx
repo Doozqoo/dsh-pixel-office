@@ -220,6 +220,9 @@ export function apply(ctx: ClientContext): void {
     // already claimed by a real workspace. The harness groups these under the
     // virtual "未分组" bucket (it has no workspace entity of its own), so the
     // plugin mirrors that bucket as a fixed station at cell 0.
+    const archived = props.useWorkspaces(state => state.archivedSessionIds.join(','))
+    const archivedIds = archived === '' ? [] : archived.split(',')
+
     const allIds = props.useSessions(state => [...state.ids])
     const realSessionIds = props.useWorkspaces(
       state => state.items.flatMap(w => [...w.sessionIds]),
@@ -233,15 +236,12 @@ export function apply(ctx: ClientContext): void {
       { id: UNGROUPED_KEY, title: '未分组', sessionIds: ungroupedIds },
       ...desks,
     ] as readonly DeskRecord[]
-    const archived = props.useWorkspaces(state => state.archivedSessionIds.join(','))
     const noteEntries = props.useSessions(state => state.ids.map((id) => {
       const record = state.byId[id]
       return record === undefined
         ? null
         : [id, { title: record.displayTitle, running: record.running }] as const
     }))
-
-    const archivedIds = archived === '' ? [] : archived.split(',')
     const notes: Record<string, NoteRecord> = {}
     for (const entry of noteEntries) if (entry !== null) notes[entry[0]] = entry[1]
 
