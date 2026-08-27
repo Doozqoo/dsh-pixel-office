@@ -584,6 +584,14 @@ export function TopView(props: {
   const onUp = (e: React.PointerEvent<HTMLDivElement>, i: number) => {
     const current = store.get().drag
     store.set({ drag: null })
+    // The 未分组 station skips the pointer-down drag (cell 0 is pinned), so a
+    // plain click arrives here with no drag in flight. Recover it as an enter —
+    // otherwise the station is mouse-unenterable (only keyboard Enter/Space
+    // worked) and its sessions can't be reached to continue or delete them.
+    if (current === null && scene.layout[i] === UNGROUPED_KEY) {
+      props.onEnter(UNGROUPED_KEY)
+      return
+    }
     if (current === null || current.kind !== 'desk') return
     if (!current.moved) {
       const wsId = scene.layout[i]
