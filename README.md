@@ -99,6 +99,22 @@ path 依赖是链接到 checkout（不是拷贝）：改完源码重新 `pnpm bu
 
 确认装没装进层序，可看 profile 的 `package.json` 依赖与 `dsh.profile.bundles` 列表，或运行 `pnpm dsh --profile web --dump-config` 查看合成入口树里是否出现 `pixel-office`。
 
+### DeepSeek Harness 工位协同注意事项
+
+`deepseek-harness` 是**官方仓库**。你在本地该工位上所做的任何修改（例如工作区删除时的会话级联归档、布局 reconcile 逻辑等）**只活在本地 checkout**，既不会同步给其他协作者，也不会进入上游。
+
+这意味着，基于本地改动开发 Pixel Office 时**不可避免地会遇到兼容性问题**：
+
+- 其他协作者的 harness 仍是上游原版，没有你本地的级联归档 / 布局 reconcile 等修复，表现可能与你本地对不上；
+- 插件所依赖的宿主行为（接口、slot、事件）以**运行中 harness 为准**，`contracts.ts` 只是结构性镜像，上游一旦变动就需要手动对齐；
+- 本地对 harness 的修复若没回馈上游，长期会随上游演进产生分叉，merge 成本只会越积越高。
+
+**遇到相关问题时请遵守以下约定：**
+
+1. **优先提回上游。** 把 harness 侧的修复走 PR / 提交回馈，而不是只在本地下游永久保留分叉。
+2. **明确「本地独有补丁」与「上游公共行为」。** 与协作者保持同步沟通，避免把上游行为误判成插件 Bug，或反过来把本地补丁当成通用能力。
+3. **先确认对方 harness 是否含你的本地改动**再归责。排查兼容性问题时，先对齐双方 harness 状态，再决定是否归结为 Pixel Office 的问题。
+
 ## 升级
 
 ```powershell
