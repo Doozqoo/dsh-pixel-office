@@ -7,14 +7,14 @@
  * shipped theme returns with no page reload.
  * @module dsh-client-pixel-office/client
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
   SessionFaceMirror, SlotsService, ThemeService, WorkspacesService,
 } from './contracts.ts'
 import { loadScene, persistScene, pruneScene } from './persist.ts'
-import { DESKS, fitInto, sameGrid } from './placement.ts'
+import { DESKS, UNGROUPED_KEY, fitInto, sameGrid } from './placement.ts'
 import { createStore } from './store.ts'
 import { insertBaseStyles, insertStyles } from './styles.ts'
 import { DARK_TOKENS, LIGHT_TOKENS, pairTokens } from './tokens.ts'
@@ -215,6 +215,24 @@ export function apply(ctx: ClientContext): void {
       title: w.title,
       sessionIds: [...w.sessionIds],
     }))) as readonly DeskRecord[]
+
+    // Ungrouped sessions = every live session that is not archived and not
+    // already claimed by a real workspace. The harness groups these under the
+    // virtual "未分组" bucket (it has no workspace entity of its own), so the
+    // plugin mirrors that bucket as a fixed station at cell 0.
+    const allIds = props.useSessions(state => [...state.ids])
+    const realSessionIds = props.useWorkspaces(
+      state => state.items.flatMap(w => [...w.sessionIds]),
+    ) as readonly string[]
+    const ungroupedIds = allIds.filter(
+      id => !archivedIds.includes(id) && !realSessionIds.includes(id),
+    )
+
+    // Prepend the synthetic 未分组 station so it is always present (and first).
+    const stationList = [
+      { id: UNGROUPED_KEY, title: '未分组', sessionIds: ungroupedIds },
+      ...desks,
+    ] as readonly DeskRecord[]
     const archived = props.useWorkspaces(state => state.archivedSessionIds.join(','))
     const noteEntries = props.useSessions(state => state.ids.map((id) => {
       const record = state.byId[id]
@@ -233,7 +251,7 @@ export function apply(ctx: ClientContext): void {
     // sessions and ids the session list has not published, both of which the
     // matrix omits — the tile claimed notes that were not there.
     const liveCounts: Record<string, number> = {}
-    for (const desk of desks) {
+    for (const desk of stationList) {
       const live = desk.sessionIds.filter(
         id => notes[id] !== undefined && !archivedIds.includes(id),
       )
@@ -241,17 +259,9 @@ export function apply(ctx: ClientContext): void {
       running[desk.id] = live.some(id => notes[id]?.running === true)
     }
 
-    const deskIdKey = desks.map(d => d.id).join(',')
-    // Tracks whether the workspace list has ever published at least one
-    // workspace. The reconcile below must NOT wipe the persisted grid on the
-    // very first render (the list is async and arrives empty before it fills),
-    // or a reload would discard the saved arrangement. But once we have seen a
-    // real workspace and the list later becomes empty — i.e. every workspace
-    // was deleted — the grid MUST be cleared so no occupied station lingers.
-    const everHadWorkspaces = useRef(false)
+    const deskIdKey = stationList.map(d => d.id).join(',')
     useEffect(() => {
       const ids = deskIdKey === '' ? [] : deskIdKey.split(',')
-      if (ids.length > 0) everHadWorkspaces.current = true
       // A workspace creation is mid-flight with an aimed cell: hold the
       // reconcile so the fresh id is not swept into the lowest free cell,
       // and place it at the aimed cell once it publishes.
@@ -271,23 +281,23 @@ export function apply(ctx: ClientContext): void {
         }
         return
       }
-      // The workspace list has not published yet (async mount) or holds no
-      // workspaces: leave the restored layout alone. With an empty `ids` the
-      // cleanup below would null EVERY cell of the persisted grid — no id is
-      // "live" yet — and the next publish re-fills it in list order, silently
-      // discarding the arrangement the user saved (their 2-4-6-8 became
-      // 1-2-3-4 after every reload).
-      if (ids.length === 0) {
-        // All workspaces deleted: clear any stale stations so the board
-        // returns to the empty-chair state instead of keeping one occupied
-        // cell (the bug where deleting every workspace left a residual desk).
-        if (everHadWorkspaces.current) {
-          const cleared = store.get().layout.slice().fill(null)
-          if (!sameGrid(cleared, store.get().layout)) store.set({ layout: cleared })
-        }
-        return
+      // The workspace list has not published yet (async mount): leave the
+      // restored layout alone so a reload does not discard the saved
+      // arrangement. Once the list publishes — and the always-present
+      // 未分组 station publishes immediately — this branch no longer fires.
+      if (ids.length === 0) return
+      const reconciled = fitInto(store.get().layout, ids, DESKS, false)
+      // `fitInto` returns a readonly grid; copy it so 未分组 can be pinned.
+      const next: (string | null)[] = [...reconciled]
+      // The 未分组 station is pinned to cell 0 so it never moves. If a real
+      // workspace had drifted into cell 0 (e.g. a layout restored from before
+      // ungrouped existed), swap it out rather than overwrite it.
+      if (next[0] !== UNGROUPED_KEY) {
+        const displaced = next[0] ?? null
+        const at = next.indexOf(UNGROUPED_KEY)
+        if (at > 0) next[at] = displaced
+        next[0] = UNGROUPED_KEY
       }
-      const next = fitInto(store.get().layout, ids, DESKS, false)
       if (!sameGrid(next, store.get().layout)) store.set({ layout: next })
     }, [deskIdKey, scene.pendingLayout])
 
@@ -311,7 +321,7 @@ export function apply(ctx: ClientContext): void {
     }, [deskIdKey, sessionIdKey])
 
     const active = scene.active
-    const activeDesk = active === null ? undefined : desks.find(d => d.id === active)
+    const activeDesk = active === null ? undefined : stationList.find(d => d.id === active)
     const liveKey = activeDesk === undefined
       ? ''
       : activeDesk.sessionIds.filter(id => notes[id] !== undefined && !archivedIds.includes(id)).join(',')
@@ -413,16 +423,23 @@ export function apply(ctx: ClientContext): void {
     }
 
     const clearWorkspace = (workspaceId: string) => {
-      const desk = desks.find(d => d.id === workspaceId)
+      const desk = stationList.find(d => d.id === workspaceId)
       store.set({ modal: { kind: 'clear', wsId: workspaceId, title: desk?.title ?? '' } })
     }
 
     const renameWorkspaceReq = (workspaceId: string) => {
-      const desk = desks.find(d => d.id === workspaceId)
+      const desk = stationList.find(d => d.id === workspaceId)
       store.set({ modal: { kind: 'rename', wsId: workspaceId, title: desk?.title ?? '' } })
     }
 
     const addSession = async (pos: number, text: string) => {
+      // 未分组 has no workspace entity and the harness exposes no verb to
+      // create a session without one, so it stays read-only — matching the
+      // harness, which also routes session creation through a workspace.
+      if (activeDesk?.id === UNGROUPED_KEY) {
+        store.set({ notice: '未分组为只读 / UNGROUPED IS READ-ONLY' })
+        return
+      }
       if (workspaces === undefined || activeDesk === undefined) {
         store.set({ modal: null, notice: '会话链路不可用 / SESSION LINK OFFLINE' })
         return
@@ -517,7 +534,7 @@ export function apply(ctx: ClientContext): void {
           ? (
               <TopView
                 store={store}
-                desks={desks}
+                desks={stationList}
                 running={running}
                 liveCounts={liveCounts}
                 onCreate={(index) => { void createWorkspace(index) }}
@@ -538,6 +555,7 @@ export function apply(ctx: ClientContext): void {
                   onBack={leaveDesk}
                   onSettings={openSettings}
                   consumed={consumed}
+                  isUngrouped={activeDesk?.id === UNGROUPED_KEY}
                   readLastMessage={readLastMessage}
                 />
               )}

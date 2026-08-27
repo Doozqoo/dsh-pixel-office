@@ -7,6 +7,19 @@
 /** Desks in the top-down view: a 6x4 grid (6 columns, 4 rows). */
 export const DESKS = 24
 
+/**
+ * Synthetic key for the always-present "未分组 / Ungrouped" station.
+ *
+ * The harness surfaces orphaned sessions (those with no valid workspace) under
+ * a virtual "未分组" group rather than a real workspace entity, so it has no
+ * `workspaceId` of its own. The plugin mirrors that group as a fixed station at
+ * cell 0, treated like a normal workspace for display but with its
+ * rename / clear / delete / new-session affordances disabled (the harness
+ * offers no verb to act on the group as a whole, nor to create a session
+ * without a workspace).
+ */
+export const UNGROUPED_KEY = '__ungrouped__'
+
 /** Sticky-note paper colors, chosen per session id so a note keeps its color. */
 export const STICKER_COLORS = ['#ffeda8', '#ffbacf', '#bdf7c7', '#bddbff', '#b0f2eb'] as const
 

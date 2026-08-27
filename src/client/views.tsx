@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, formatRelative, hashIndex, swapCells } from './placement.ts'
+import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY, formatRelative, hashIndex, swapCells } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 import type { SessionFaceMirror } from './contracts.ts'
@@ -426,6 +426,8 @@ function DeskTile(props: {
   readonly onClear: () => void
   readonly onRename: () => void
   readonly onCreate: (index: number) => void
+  /** When true this is the pinned 未分组 station: rename/clear are hidden. */
+  readonly isUngrouped?: boolean
 }): ReactNode {
   const state = props.isEmpty
     ? 'off'
@@ -474,7 +476,7 @@ function DeskTile(props: {
           <span>{stateText}</span>
         </span>
         <div className="pxo-desk-actions">
-          {props.isEmpty
+          {props.isEmpty || props.isUngrouped
             ? null
             : (
                 <>
@@ -565,7 +567,8 @@ export function TopView(props: {
   )
 
   const onDown = (e: React.PointerEvent<HTMLDivElement>, i: number) => {
-    if (scene.layout[i] === null) return
+    // Cell 0 is the pinned 未分组 station and must never be dragged.
+    if (scene.layout[i] === null || scene.layout[i] === UNGROUPED_KEY) return
     e.currentTarget.setPointerCapture(e.pointerId)
     store.set({ drag: { kind: 'desk', from: i, x: e.clientX, y: e.clientY, moved: false, over: -1 } })
   }
@@ -588,7 +591,10 @@ export function TopView(props: {
       return
     }
     const target = hitIndex(DESK_REGISTRY, e.clientX, e.clientY)
-    if (target < 0 || target === current.from) return
+    // Never drop onto cell 0 (the pinned 未分组 station) and never drag it
+    // away from cell 0 — the reconcile re-pins it, so reject early to avoid a
+    // flicker where a real workspace briefly occupies the corner.
+    if (target < 0 || target === current.from || target === 0 || current.from === 0) return
     store.set({ layout: swapCells(scene.layout, current.from, target) })
   }
 
@@ -677,6 +683,7 @@ export function TopView(props: {
               onClear={() => { if (desk !== undefined) props.onClear(desk.id) }}
               onRename={() => { if (desk !== undefined) props.onRename(desk.id) }}
               onCreate={props.onCreate}
+              isUngrouped={wsId === UNGROUPED_KEY}
             />
           )
         })}
@@ -943,6 +950,8 @@ export function DeskView(props: {
   readonly onBack: () => void
   readonly onSettings: () => void
   readonly consumed: number
+  /** When true this is the 未分组 desk: it is read-only (no new sessions). */
+  readonly isUngrouped?: boolean
   /** Resolve the latest message of a session for the hover preview. */
   readonly readLastMessage: (sessionId: string) => { readonly role: string; readonly text: string } | undefined
 }): ReactNode {
@@ -1166,7 +1175,7 @@ export function DeskView(props: {
                 onPointerUp={endDrag}
                 onPointerMove={moveDrag}
                 onClick={() => {
-                  if (isInvite) store.set({ modal: { kind: 'new', pos: i } })
+                  if (isInvite && !props.isUngrouped) store.set({ modal: { kind: 'new', pos: i } })
                 }}
               >
                 <Sticker
@@ -1189,12 +1198,16 @@ export function DeskView(props: {
         </div>
       </div>
 
-      <NewStickyStack
-        onPointerDown={(e) => { startDrag(e, { kind: 'stack' }) }}
-        onPointerMove={moveDrag}
-        onPointerUp={endDrag}
-        consumed={props.consumed}
-      />
+      {props.isUngrouped
+        ? null
+        : (
+          <NewStickyStack
+            onPointerDown={(e) => { startDrag(e, { kind: 'stack' }) }}
+            onPointerMove={moveDrag}
+            onPointerUp={endDrag}
+            consumed={props.consumed}
+          />
+        )}
 
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
       {null /* removed: <div className="pxo-scan" /> — scanlines now injected at <body> top by Scene */}
