@@ -31,20 +31,20 @@
 | 区域 | 行为 |
 |---|---|
 | **侧栏** | 裁切隐藏，不是 `display:none`（避免牵连 React 子树被删除） |
-| **俯视图工位** | 6×4 田字网格；拖拽可搬迁设备、交换位置；空位点击新建工作区；重命名 + 清空 |
+| **俯视图工位** | 6×4 田字网格；拖拽可搬迁设备、交换位置；空位点击新建工作区；重命名 + 清空（常驻「未分组」工位固定第 1 格，不可拖拽） |
 | **桌面计划板** | `ResizeObserver` 自适应行列数；便利贴按 156×168 排版，格子按 `1fr` 精确铺满，始终保留一个空位 |
 | **便利贴** | 一张 = 一个会话；点击在 CRT 打开；拖拽交换位置；拖出计划板撕下（归档）；显示末条消息 + YOU/AI/SYS 角标 |
 | **CRT 显示器** | 进入工位默认黑屏待机，点便利贴才接入当前会话；当前打开的便利贴带青色高亮 |
 | **新会话** | 桌面左下一叠便利贴，拖到计划板空位，弹框填写展示文字 |
 | **设置分区** | 注册进 `settings.section`；总开关 / 动效强度 / 网格开关三项 |
 | **持久化** | 工位布局、便利贴摆放、自定义文字存进 `localStorage`，刷新后保留 |
-| **外观适配** | 亮 / 暗两套完整像素调色板，跟随宿主外观偏好 |
+| **外观适配** | 插件表面强制深色（DARK_TOKENS），不随宿主外观切换；插件范围外的宿主界面不受影响 |
 | **背景** | 五层视差：漂移极光、透视地板与天顶网格、三层像素浮尘、暗角与地平线泛光 |
 | **动画** | 便利贴不同步摆动与悬停抬起、指示灯呼吸、CRT 扫描线、CRT 开机转场、工位级联延迟入场 |
 | **马赛克消除** | 开便利贴时，conversation slot 上盖主题色马赛克遮罩，每个小方块随机逐个 pop 消失，露出下面的真实对话 |
 | **像素猫** | 仅在工位有会话运行时出现于显示器里；静止偶尔眨眼；待机时不显示 |
 | **动效档位** | `CALM`（仅保留配色，停止环境动效）/ `OVERDRIVE`（全动效）；尊重宿主 `prefers-reduced-motion` |
-| **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（亮暗跟踪）；订阅基座 4 个注入服务（runtime / ui-theme / ui-layout / ui-settings） |
+| **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号）；订阅基座 4 个注入服务（runtime / ui-theme / ui-layout / ui-settings） |
 
 ## 安装
 
@@ -60,7 +60,7 @@ Pixel Office 是标准的 DSH Profile Bundle。安装的本质是把一个声明
 
 装、升、卸之后都需**重启当前 `dsh web` 进程并刷新浏览器页面**——当前 Web Profile 不承诺对持久化 Bundle layer 热重载。
 
-### 从已发布仓库安装
+### 从 GitHub 仓库安装
 
 ```powershell
 npx @deepseek-ai/dsh plugin --profile web add github:Doozqoo/dsh-pixel-office
@@ -92,7 +92,7 @@ path 依赖是链接到 checkout（不是拷贝）：改完源码重新 `pnpm bu
 > **Windows：路径别带空格。** `dsh plugin` 在 Windows 上经 shell 转给 pnpm，含空格的路径会被截断，导致装上 `Program` / `dsh-pixel-office` 这类残缺依赖，之后 `remove <真包名>` 会报"no such dependency"。遇到含空格路径时建一个 junction 再 add：
 > ```powershell
 > New-Item -ItemType Junction -Path "C:\Users\you\dsh-pixel-office" `
->   -Target "D:\Program Files\dsh\dsh-pixel-office" -Force
+>   -Target "D:\...\dsh-pixel-office" -Force
 > node --import tsx/esm apps\cli\src\bin.ts plugin --profile web add `
 >   "C:\Users\you\dsh-pixel-office"
 > ```
@@ -183,11 +183,21 @@ pnpm typecheck            # tsc -b --force
 
 构建产物（`lib/client.js`、`lib/index.js`、`.d.ts`、sourcemap）由 tsdown 一次性产出。Plug-and-play：dev server 读 `lib/client.js`，不在 `src/` 上跑。
 
+## 发布
+
+```powershell
+npm login                    # 首次：登录 npm（有 2FA 备好 TOTP）
+pnpm publish --dry-run       # 先看打进包里哪些文件（确认 lib/ 与 cordis.patch.yml 都在）
+pnpm publish                 # 正式发布（会自动跑 prepare 构建 lib/）
+```
+
+npm 同名包不能覆盖已发布版本，每次发布先 `npm version patch|minor|major` 升版本再 `pnpm publish`。包名 `dsh-client-pixel-office` 为非 scoped 包，默认 public，无需 `--access public`。
+
 ## 已知限制
 
 - **持久化只在本浏览器生效。** 换浏览器或清缓存会回到默认推导。
-- **俯视图固定 24 工位，第 1 格（左上角）常驻为「未分组」工位**，展示未被任何工作区收纳的会话（与官方 UI 的「未分组」分组一致）。其余 23 格用于真实工作区，超出的工作区仍存在、仍可从原生界面访问，只是没有工位可放。「未分组」工位为只读：不可重命名 / 清空 / 删除，也不能在其下新建会话——官方不提供「无所属工作区」的建会能力，插件保持与官方一致，不自行扩展该功能。
-- **亮色模式的会话内部**可能仍有组件写死颜色 token 层够不到。代码块、表格、输入框有兜底规则，未必覆盖全。
+- **俯视图固定 24 工位，第 1 格（左上角）常驻为「未分组」工位**，展示未被任何工作区收纳的会话（与官方 UI 的「未分组」分组一致）。其余 23 格用于真实工作区，超出的工作区仍存在、仍可从原生界面访问，只是没有工位可放。「未分组」工位可点击进入，其下会话可继续对话或拖出归档；但工位本身为只读：不可重命名 / 清空 / 删除，也不能在其下新建会话——官方不提供「无所属工作区」的建会能力，插件保持与官方一致，不自行扩展该功能。
+- **宿主处于亮色模式时，会话内部（host 渲染的 conversation）仍按宿主主题显示**，可能与插件强制深色的 CRT 边框不一致；代码块、表格、输入框有兜底规则，未必覆盖全。
 - **模型 / Agent 预设分区只做了外观皮肤**（直角 + 等宽字体），内部控件未逐项验证。
 - **暂无自动化测试。** `placement.ts` 抽象出来便于测试，但测试还没写，欢迎 PR。
 
