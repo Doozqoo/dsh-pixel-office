@@ -68,14 +68,33 @@ export interface ThemeService {
 
 /** The workspaces service members this plugin uses. */
 export interface WorkspacesService {
-  pickDirectory: () => Promise<string | null>
+  pickDirectory?: () => Promise<string | null>
   create: (request: { readonly path: string }) => Promise<unknown>
   delete: (workspaceId: string) => Promise<void>
-  /** Creates a session bound to that workspace and resolves its id. */
-  connectWorkspace: (workspaceId: string) => Promise<string>
-  archiveSession: (sessionId: string) => Promise<void>
+  /** Creates a session bound to that workspace and resolves its id (v2 only). */
+  connectWorkspace?: (workspaceId: string) => Promise<string>
+  archiveSession?: (sessionId: string) => Promise<void>
   /** Renames a workspace (changes its displayed title). */
   rename?: (workspaceId: string, title: string) => Promise<unknown>
+}
+
+/**
+ * The `uiWorkspace` capability surface introduced in
+ * `master` (>= 0.1.2-alpha.1).
+ *
+ * `connectWorkspace` / `pickDirectory` / `archiveSession` were moved off the
+ * `workspaces` (WorkspaceController) service into a separate
+ * `UiWorkspaceService` registered under the `'uiWorkspace'` Cordis key.
+ * On `v2` this service does not exist and the runtime falls back to
+ * `workspaces`. The runtime code picks whichever side is present.
+ */
+export interface UiWorkspaceService {
+  /** Connects (or creates) the blank Session bound to a Workspace. */
+  connectWorkspace: (workspaceId: string) => Promise<string>
+  /** Opens the host-native directory picker. */
+  pickDirectory: () => Promise<string | null>
+  /** Archives (and clears if current) a Session. */
+  archiveSession: (sessionId: string) => Promise<void>
 }
 
 /**

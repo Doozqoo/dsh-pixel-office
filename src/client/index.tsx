@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
   ClientContext, Disposer, OverlayProps, SessionsService,
-  SessionFaceMirror, SlotsService, ThemeService, WorkspacesService,
+  SessionFaceMirror, SlotsService, ThemeService, UiWorkspaceService,
+  WorkspacesService,
 } from './contracts.ts'
 import { loadScene, persistScene, pruneScene } from './persist.ts'
 import { DESKS, UNGROUPED_KEY, fitInto, sameGrid } from './placement.ts'
@@ -83,6 +84,13 @@ export function apply(ctx: ClientContext): void {
     return
   }
   const workspaces = ctx.get('workspaces') as WorkspacesService | undefined
+  /**
+   * `master` (>= 0.1.2-alpha.1) moved `connectWorkspace` / `pickDirectory`
+   * out of the `workspaces` (WorkspaceController) service into a separate
+   * `uiWorkspace` (UiWorkspaceService). Either side may carry the methods;
+   * the runtime below picks whichever service exposes them.
+   */
+  const uiWorkspace = ctx.get('uiWorkspace') as UiWorkspaceService | undefined
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
 
@@ -353,7 +361,13 @@ export function apply(ctx: ClientContext): void {
       }
       try {
         store.set({ notice: '正在扫描本地目录… / SCANNING DIRECTORY' })
-        const path = await workspaces.pickDirectory()
+        // `master` moved `pickDirectory` to `uiWorkspace`; fall back to `workspaces` on v2.
+        const pick = uiWorkspace?.pickDirectory ?? workspaces.pickDirectory
+        if (pick === undefined) {
+          store.set({ notice: '目录选择不可用 / PICKER UNAVAILABLE' })
+          return
+        }
+        const path = await pick()
         if (path === null || path === '') {
           store.set({ notice: null, pendingLayout: null })
           return
@@ -452,7 +466,7 @@ export function apply(ctx: ClientContext): void {
       // earlier note. The claim suspends that effect for this desk.
       store.set({ modal: null, pending: { wsId, pos }, notice: '正在生成会话节点… / SPAWNING NODE' })
       try {
-        const sid = await workspaces.connectWorkspace(wsId)
+        const sid = await (uiWorkspace?.connectWorkspace ?? workspaces.connectWorkspace ?? (() => Promise.reject(new Error('connectWorkspace unavailable'))))(wsId)
         const labels = { ...store.get().labels }
         if (text !== '') labels[sid] = text
         // Re-read: the grid may legitimately have changed while awaiting.
@@ -567,7 +581,10 @@ export function apply(ctx: ClientContext): void {
           store={store}
           notes={notes}
           onAdd={(pos, text) => { void addSession(pos, text) }}
-          onTear={(sessionId) => { workspaces?.archiveSession(sessionId) }}
+          onTear={(sessionId) => {
+            const archive = uiWorkspace?.archiveSession ?? workspaces?.archiveSession
+            if (archive !== undefined) void archive(sessionId)
+          }}
           onClear={(workspaceId) => { workspaces?.delete(workspaceId) }}
           onRename={(workspaceId, title) => { void renameWorkspace(workspaceId, title) }}
         />
