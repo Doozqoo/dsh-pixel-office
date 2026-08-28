@@ -13,8 +13,33 @@
 /** Removes one registration or effect. */
 export type Disposer = () => void
 
-/** Selector hook over an external snapshot source. */
+/** Selector hook result of an external snapshot source. */
 export type SnapshotHook<S> = <T>(select: (state: S) => T) => T
+
+/** Wire-pump success/failure envelope the host RPC layer returns. */
+export type RemoteResult<T> =
+  | { readonly result: { readonly ok: true, readonly value: T } }
+  | { readonly result: { readonly ok: false, readonly error: { readonly code: string, readonly message: string } } }
+
+/** Minimum surface of the host-generated Workspace Remote namespace. */
+export interface WorkspaceRemoteApi {
+  create(input: { readonly path: string }): Promise<RemoteResult<unknown>>
+  delete(input: { readonly workspaceId: string }): Promise<RemoteResult<unknown>>
+  rename(input: { readonly workspaceId: string, readonly title: string }): Promise<RemoteResult<unknown>>
+}
+
+/**
+ * Subset of the host gateway `ctx.remote` this plugin reaches for.
+ *
+ * `master` (>= 0.1.2-alpha.1) split the workspace lifecycle: the
+ * `WorkspaceController` service (`ctx.workspaces`) is NOT loaded by the
+ * web client composition, so `ctx.get('workspaces')` resolves to `undefined`.
+ * Plugins must call `ctx.remote.workspace.{create,delete,rename}`
+ * directly via the gateway Remote namespace.
+ */
+export interface HostRemote {
+  readonly workspace: WorkspaceRemoteApi
+}
 
 /** One workspace as the workspace list publishes it. */
 export interface WorkspaceRecord {

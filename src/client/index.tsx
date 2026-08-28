@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
-  ClientContext, Disposer, OverlayProps, SessionsService,
+  ClientContext, Disposer, HostRemote, OverlayProps, SessionsService,
   SessionFaceMirror, SlotsService, ThemeService, UiWorkspaceService,
   WorkspacesService,
 } from './contracts.ts'
@@ -93,6 +93,14 @@ export function apply(ctx: ClientContext): void {
   const uiWorkspace = ctx.get('uiWorkspace') as UiWorkspaceService | undefined
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
+  /**
+   * `WorkspaceController` is NOT loaded by the web client composition on
+   * `master` — `ctx.get('workspaces')` resolves to `undefined`. The host
+   * gateway does publish the `remote` namespace, so `create` / `delete` /
+   * `rename` go straight through `ctx.remote.workspace`.
+   */
+  const hostRemote = ctx.get('remote') as HostRemote | undefined
+  const remoteWorkspace = hostRemote?.workspace
 
   /**
    * Resolve the most recent message of a session for the hover preview.
@@ -149,12 +157,21 @@ export function apply(ctx: ClientContext): void {
    * toast when the running harness does not expose `workspaces.rename`.
    */
   const renameWorkspace = async (workspaceId: string, title: string): Promise<void> => {
-    if (workspaces === undefined || workspaces.rename === undefined) {
+    if (workspaces === undefined || (workspaces.rename === undefined && remoteWorkspace === undefined)) {
       store.set({ notice: '重命名不可用 / RENAME OFFLINE' })
       return
     }
     try {
-      await workspaces.rename(workspaceId, title)
+      // Prefer WorkspaceController wrapper on v2; on `master` the controller
+      // is not loaded, so go through the gateway Remote namespace.
+      if (workspaces.rename !== undefined) {
+        await workspaces.rename(workspaceId, title)
+      } else if (remoteWorkspace !== undefined) {
+        const outcome = await remoteWorkspace.rename({ workspaceId, title })
+        if (!outcome.result.ok) throw new Error(`workspace.rename failed: ${outcome.result.error.code} ${outcome.result.error.message}`)
+      } else {
+        throw new Error('workspace.rename unavailable')
+      }
       store.set({ notice: '工位重命名 / STATION RELABELED' })
     } catch (error) {
       console.error(`${PLUGIN_ID}: workspace rename failed`, error)
@@ -355,14 +372,14 @@ export function apply(ctx: ClientContext): void {
     }, [missing])
 
     const createWorkspace = async (pos?: number) => {
-      if (workspaces === undefined) {
+      if (workspaces === undefined && remoteWorkspace === undefined) {
         store.set({ notice: '工作区服务离线 / WORKSPACE LINK OFFLINE' })
         return
       }
       try {
         store.set({ notice: '正在扫描本地目录… / SCANNING DIRECTORY' })
         // `master` moved `pickDirectory` to `uiWorkspace`; fall back to `workspaces` on v2.
-        const pick = uiWorkspace?.pickDirectory ?? workspaces.pickDirectory
+        const pick = uiWorkspace?.pickDirectory ?? workspaces?.pickDirectory
         if (pick === undefined) {
           store.set({ notice: '目录选择不可用 / PICKER UNAVAILABLE' })
           return
@@ -380,7 +397,16 @@ export function apply(ctx: ClientContext): void {
         if (pos !== undefined) {
           store.set({ pendingLayout: { pos, before: deskIdKey } })
         }
-        await workspaces.create({ path })
+        // Prefer the WorkspaceController wrapper on v2; on `master` the
+        // controller is not loaded, so go through the gateway Remote namespace.
+        if (workspaces?.create !== undefined) {
+          await workspaces.create({ path })
+        } else if (remoteWorkspace !== undefined) {
+          const outcome = await remoteWorkspace.create({ path })
+          if (!outcome.result.ok) throw new Error(`workspace.create failed: ${outcome.result.error.code} ${outcome.result.error.message}`)
+        } else {
+          throw new Error('workspace.create unavailable')
+        }
         store.set({ notice: '神经链接已建立 / WORKSPACE LINKED' })
       } catch (error) {
         console.error(`${PLUGIN_ID}: workspace creation failed`, error)
@@ -585,7 +611,18 @@ export function apply(ctx: ClientContext): void {
             const archive = uiWorkspace?.archiveSession ?? workspaces?.archiveSession
             if (archive !== undefined) void archive(sessionId)
           }}
-          onClear={(workspaceId) => { workspaces?.delete(workspaceId) }}
+          onClear={async (workspaceId) => {
+            // Prefer WorkspaceController on v2; on `master` the controller is
+            // not loaded, so go through the gateway Remote namespace.
+            if (workspaces?.delete !== undefined) {
+              await workspaces.delete(workspaceId)
+            } else if (remoteWorkspace !== undefined) {
+              const outcome = await remoteWorkspace.delete({ workspaceId })
+              if (!outcome.result.ok) throw new Error(`workspace.delete failed: ${outcome.result.error.code} ${outcome.result.error.message}`)
+            } else {
+              throw new Error('workspace.delete unavailable')
+            }
+          }}
           onRename={(workspaceId, title) => { void renameWorkspace(workspaceId, title) }}
         />
       </div>
