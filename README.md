@@ -1,5 +1,7 @@
 # Pixel Office
 
+[English version](./README.en.md)
+
 一款给 [DeepSeek Harness](https://github.com/Doozqoo/deepseek-harness) Web GUI 的 **digital + pixel-art** 工作区主题插件。
 
 它把会话列表换成一间俯视的像素办公室：6×4（24 工位）"田"字形工位网格，每个工位对应一个工作区。空工位只有一把座椅；已建立的工作区在桌上摆一台电脑；工作区有会话在跑时显示器点亮并跳动。点进工位是桌面正视图——左边一块计划板贴着代表会话的便利贴，右边一台 CRT 显示器，**里面是真正的对话界面**：聊天、发送、工具调用全部照常工作。
@@ -10,7 +12,7 @@
 
 **本插件只支持 DeepSeek Harness 的最新版本**（≥ `0.1.2-alpha.1`，客户端 runtime 已拆分为 `api/*` + `ui/*`）。更早的基座版本一律不支持，也不再做向下兼容。
 
-原因不是偷懒：不同基座的 `dsh.client.inject` 依赖清单互不兼容（当前基座已删除 `@deepseek-ai/dsh-client-runtime`，旧基座则缺少 `session-controller` / `workspace-controller` 等包），一份 manifest 无法通吃。**解决办法只有一个：把 DeepSeek Harness 升到最新版。**
+原因不是偷懒：不同基座的 `dsh.client.inject` 依赖清单互不兼容（当前基座已删除 `@deepseek-ai/dsh-client-runtime`，旧基座则缺少 `session-controller` / `workspace-controller` 等包），一份 manifest 无法通吃。**解决办法只有一个：把 DeepSeek Harness 升到最新版。还有啥不对的，能动手就别吵吵**
 
 **升级基座后务必重新挂载**（`dsh.client.inject` 在插件加入 profile 时解析一次，重启 `dsh web` **不会**重读）：
 
@@ -183,6 +185,7 @@ src/client/placement.ts 摆放与呈现逻辑（无 React、无 DOM）
 src/client/store.ts     场景状态与指针拖拽
 src/client/persist.ts   摆放持久化（localStorage 读写与校验）
 src/client/contracts.ts 所需 DSH 表面的结构化类型
+src/client/version.ts   从侧边栏品牌区读取宿主基座版本号
 assets/                 README 截图（top-view / desk-view / settings）
 tsdown.config.ts        产物构建配置
 ```
