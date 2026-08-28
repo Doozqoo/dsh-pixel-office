@@ -10,7 +10,7 @@ import type { Placement } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 import type { SessionFaceMirror } from './contracts.ts'
-import { PLUGIN_VERSION } from './version.ts'
+import { useHostVersion } from './version.ts'
 
 /** One session as the views consume it. */
 export interface NoteRecord {
@@ -86,6 +86,7 @@ export function PixelOfficeSettings(props: {
 }): ReactNode {
   const { store } = props
   const scene = useScene(store)
+  const baseVersion = useHostVersion()
   const setEnabled = (value: boolean) => { store.set({ enabled: value }) }
   const setIntensity = (value: 'calm' | 'overdrive') => { store.set({ intensity: value }) }
   const setGrid = (value: boolean) => { store.set({ grid: value }) }
@@ -93,9 +94,9 @@ export function PixelOfficeSettings(props: {
     <div className="pxo-settings">
       <div className="pxo-settings-hero">
         <span className="pxo-settings-kicker">THEME MODULE</span>
-        <span className="pxo-settings-ver">V{PLUGIN_VERSION}</span>
         <h2>PIXEL OFFICE</h2>
         <p>像素办公主题 · 将工作区重绘为霓虹控制台。</p>
+        <PoweredBy className="pxo-settings-ver" version={baseVersion} />
       </div>
 
       <div className="pxo-set-master">
@@ -293,6 +294,24 @@ function OnlinePill({ count }: { count: number }): ReactNode {
     <span className="pxo-status-pill">
       <span className="dot" />
       <span>{count} ONLINE</span>
+    </span>
+  )
+}
+
+/**
+ * `POWERED BY DSH <base version>`.
+ *
+ * The version is the harness running underneath, not this plugin's own — see
+ * `version.ts` for why it has to be read out of the sidebar badge. When the
+ * badge cannot be found the name prints alone: an absent version is better
+ * than a wrong one, and the credit line still reads correctly either way.
+ * @param version - the base version, or `undefined` when unavailable.
+ * @param className - the chrome class of the surrounding surface.
+ */
+function PoweredBy(props: { readonly version: string | undefined; readonly className: string }): ReactNode {
+  return (
+    <span className={props.className}>
+      POWERED BY DSH{props.version === undefined ? '' : ` ${props.version}`}
     </span>
   )
 }
@@ -564,6 +583,7 @@ export function TopView(props: {
   const drag = scene.drag
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'online'>('all')
+  const baseVersion = useHostVersion()
   const onlineCount = useMemo(
     () => scene.layout.reduce((acc, id) => acc + ((id !== null && running[id] === true) ? 1 : 0), 0),
     [scene.layout, running],
@@ -750,7 +770,7 @@ export function TopView(props: {
       </div>
       <div className="pxo-caption">
         01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
-        <span className="pxo-version">PIXEL OFFICE · V{PLUGIN_VERSION}</span>
+        <PoweredBy className="pxo-version" version={baseVersion} />
       </div>
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
       {null /* removed: <div className="pxo-scan" /> — scanlines now injected at <body> top by Scene */}

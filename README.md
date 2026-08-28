@@ -67,7 +67,7 @@ dsh plugin --profile web add <本仓库绝对路径>
 | **动效档位** | `CALM`（仅保留配色，停止环境动效）/ `OVERDRIVE`（全动效）；尊重宿主 `prefers-reduced-motion` |
 | **工位排序** | 顶视图工具栏「排序」分段控件：**手动**（默认，布局完全交给拖拽）/ **活跃度**（按各工位最近会话活动时间重排，一次性应用，之后仍可继续拖拽微调）。「未分组」始终钉在第 1 格 |
 | **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号） |
-| **版本标识** | 顶视图底部状态条右端显示 `PIXEL OFFICE · V<版本号>`；设置页 `THEME MODULE` 旁也有版本徽章。版本号在构建期由 `tsdown` 的 `define` 从 `package.json` 注入，无需手写常量 |
+| **版本标识** | 顶视图底部状态条右端与设置页 hero 显示 `POWERED BY DSH <基座版本号>`（如 `0.1.2-alpha.1-cd5ef81-dirty`）。显示的是**宿主基座**的版本，不是本插件的——基座只在侧边栏品牌区把这串文本渲染出来（由 `process.env.DSH_CLIENT_VERSION/COMMIT_HASH/GIT_DIRTY` 构建期内联），没有 cordis 服务、没有 `window` 全局、也没有 meta 标签，因此插件从 `[data-slot="sidebar"]` 里读。读不到时只显示 `POWERED BY DSH`，绝不猜一个版本号 |
 | **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——master 的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
 
 ## 安装
