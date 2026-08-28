@@ -16,37 +16,51 @@ export type Disposer = () => void
 /** Selector hook result of an external snapshot source. */
 export type SnapshotHook<S> = <T>(select: (state: S) => T) => T
 
-/** Wire-pump success/failure envelope the host RPC layer returns. */
+/**
+ * Wire success/failure envelope the host Remote layer returns.
+ *
+ * Matches `@deepseek-ai/dsh-typert-protocol`'s `RemoteResult<T>` exactly:
+ * a flat `{ ok: true, value } | { ok: false, error }` — there is NO `result`
+ * wrapper. A handler that reads `outcome.result.ok` would throw
+ * "Cannot read properties of undefined" the moment the call resolves, so the
+ * plugin always reads `outcome.ok` / `outcome.value` / `outcome.error` directly.
+ */
 export type RemoteResult<T> =
-  | { readonly result: { readonly ok: true, readonly value: T } }
-  | { readonly result: { readonly ok: false, readonly error: { readonly code: string, readonly message: string } } }
+  | { readonly ok: true, readonly value: T }
+  | { readonly ok: false, readonly error: { readonly code: string, readonly message: string } }
 
 /** Minimum surface of the host-generated Workspace Remote namespace. */
 export interface WorkspaceRemoteApi {
   create(input: { readonly path: string }): Promise<RemoteResult<unknown>>
   delete(input: { readonly workspaceId: string }): Promise<RemoteResult<unknown>>
   rename(input: { readonly workspaceId: string, readonly title: string }): Promise<RemoteResult<unknown>>
+  archiveSession(input: { readonly sessionId: string }): Promise<RemoteResult<unknown>>
+}
+
+/** Minimum surface of the host-generated Session Remote namespace. */
+export interface SessionRemoteApi {
+  create(input: { readonly workspaceId?: string, readonly cwd?: string, readonly sessionId?: string, readonly agentPreset?: string }): Promise<RemoteResult<{ readonly sessionId: string }>>
+}
+
+/** Minimum surface of the host-generated Directory Picker Remote namespace. */
+export interface DirectoryPickerRemoteApi {
+  pick(): Promise<RemoteResult<string | null>>
 }
 
 /**
  * Subset of the host gateway `ctx.remote` this plugin reaches for.
  *
- * `master` (>= 0.1.2-alpha.1) split the workspace lifecycle into the
- * `api/workspace-controller` (`ctx.workspaces`, still loaded by the web
- * bundle) and `client/ui-workspace` (`ctx.uiWorkspace`) packages. The
- * `workspaces` service keeps `create` / `delete` / `rename`; the new
- * `uiWorkspace` service owns the UI-facing `connectWorkspace` /
- * `pickDirectory` / `archiveSession`.
- *
- * Because a third-party plugin may run against either a `v2` or `master`
- * host, `ctx.remote.workspace` is kept as a *defensive cross-version
- * fallback* for `create` / `delete` / `rename` (the gateway Remote
- * namespace is always published) — NOT because `workspaces` is offline. In
- * normal operation `workspaces` is present and preferred; the remote branch
- * fires only if `workspaces` is ever absent.
+ * Third-party theme plugins run in a Cordis context that does NOT expose the
+ * internal `workspaces` / `uiWorkspace` controller services on `master`; the
+ * only reliable write surface is the generated Host Remote namespace. We keep
+ * the service lookups (`workspaces`, `uiWorkspace`, `sessions`) as fast paths
+ * for `v2` or future versions that may expose them, and fall back to
+ * `ctx.remote.{workspace,session,directoryPicker}` when they are absent.
  */
 export interface HostRemote {
   readonly workspace: WorkspaceRemoteApi
+  readonly session: SessionRemoteApi
+  readonly directoryPicker: DirectoryPickerRemoteApi
 }
 
 /** One workspace as the workspace list publishes it. */
@@ -158,6 +172,12 @@ export interface SessionFaceMirror {
 /** The sessions service members this plugin uses. */
 export interface SessionsService {
   open: (sessionId: string) => unknown
+  /**
+   * Create a blank Session bound to a Workspace (the internal implementation
+   * of `connectWorkspace` on both v2 and master). Some Cordis contexts expose
+   * this directly; if not, the plugin falls back to `ctx.remote.session.create`.
+   */
+  create?: (request: { readonly workspaceId: string }) => Promise<string>
   /**
    * Resolve the live face of a session. The returned `.session` is a
    * `SessionFace` (`ISession & ObservableSnapshot<ConversationSnapshot>`), which
