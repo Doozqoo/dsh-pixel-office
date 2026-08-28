@@ -10,6 +10,7 @@ import type { Placement } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 import type { SessionFaceMirror } from './contracts.ts'
+import { PLUGIN_VERSION } from './version.ts'
 
 /** One session as the views consume it. */
 export interface NoteRecord {
@@ -92,6 +93,7 @@ export function PixelOfficeSettings(props: {
     <div className="pxo-settings">
       <div className="pxo-settings-hero">
         <span className="pxo-settings-kicker">THEME MODULE</span>
+        <span className="pxo-settings-ver">V{PLUGIN_VERSION}</span>
         <h2>PIXEL OFFICE</h2>
         <p>像素办公主题 · 将工作区重绘为霓虹控制台。</p>
       </div>
@@ -748,6 +750,7 @@ export function TopView(props: {
       </div>
       <div className="pxo-caption">
         01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
+        <span className="pxo-version">PIXEL OFFICE · V{PLUGIN_VERSION}</span>
       </div>
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
       {null /* removed: <div className="pxo-scan" /> — scanlines now injected at <body> top by Scene */}

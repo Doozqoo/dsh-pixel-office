@@ -21,7 +21,17 @@
  * 4. The node half is a separate ESM artifact. The host Loader imports
  *    `lib/index.js` to read the row; it never sees the browser bundle.
  */
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'tsdown'
+
+/**
+ * The plugin version, read from the manifest and inlined into the browser
+ * bundle. `src/client/version.ts` is the only consumer; see the note there for
+ * why it falls back to `'dev'` if this substitution ever stops running.
+ */
+const PKG_VERSION = (JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string }).version
 
 /**
  * Specifiers the web shell seeds into the module table. Kept in sync with
@@ -80,6 +90,7 @@ export default defineConfig([
       'process.env.NODE_ENV': JSON.stringify(NODE_ENV),
       'import.meta.env.MODE': JSON.stringify(NODE_ENV),
       'import.meta.env': JSON.stringify({ MODE: NODE_ENV }),
+      '__PIXEL_OFFICE_VERSION__': JSON.stringify(PKG_VERSION),
     },
     outputOptions: {
       entryFileNames: 'client.js',

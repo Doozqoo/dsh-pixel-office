@@ -537,6 +537,12 @@ const CAPTION = '.pxo-caption{position:fixed;left:0;right:0;bottom:0;'
   + 'font-size:11px;color:var(--pxo-faint);letter-spacing:2px;z-index:50;'
   + 'pointer-events:none;}'
   + '.pxo-caption b{color:var(--pxo-dim);font-weight:700;letter-spacing:2px;}'
+  // Plugin version, flushed to the far right of the strip. Inherits the strip's
+  // `pointer-events:none` — it is a label, not a control.
+  + '.pxo-version{margin-left:auto;display:flex;align-items:center;gap:8px;'
+  + 'font-size:10px;letter-spacing:2px;color:var(--pxo-faint);}'
+  + '.pxo-version::before{content:"";width:4px;height:4px;background:var(--pxo-neon);'
+  + 'box-shadow:0 0 6px var(--pxo-glow);}'
 
 /* ----------------------------------------------------------------------------
  * Desk view: planning board + CRT bezel framing + new-note stack.
@@ -832,6 +838,10 @@ const SETTINGS_BASE = '.pxo-settings{display:flex;flex-direction:column;gap:16px
   + '.pxo-settings-kicker{display:inline-block;font-size:10px;letter-spacing:2px;'
   + 'text-transform:uppercase;color:var(--dsw-alias-label-tertiary,#9ca3af);'
   + 'font-weight:600;}'
+  + '.pxo-settings-ver{display:inline-block;margin-left:8px;padding:1px 6px;'
+  + 'font-size:10px;letter-spacing:1px;font-weight:600;'
+  + 'color:var(--dsw-alias-label-tertiary,#9ca3af);'
+  + 'border:1px solid var(--dsw-alias-border-l1,#e5e7eb);border-radius:4px;}'
   + '.pxo-settings-hero h2{margin:6px 0 4px;font-size:18px;font-weight:700;'
   + 'color:var(--dsw-alias-label-primary,#111827);letter-spacing:.5px;}'
   + '.pxo-settings-hero p{margin:0;font-size:12px;line-height:1.6;'
@@ -901,6 +911,9 @@ const SETTINGS = '.pxo-settings{display:flex;flex-direction:column;gap:14px;'
   + 'animation:pxo-sheen 5.5s ease-in-out infinite;}'
   + '.pxo-settings-kicker{display:inline-block;font-size:9px;letter-spacing:3px;'
   + 'color:var(--pxo-neon);text-shadow:0 0 12px var(--pxo-glow);}'
+  + '.pxo-settings-ver{display:inline-block;margin-left:8px;padding:1px 6px;'
+  + 'font-size:9px;letter-spacing:2px;color:var(--pxo-neon);'
+  + 'background:rgba(0,0,0,.28);box-shadow:inset 0 0 0 1px var(--pxo-edge);}'
   + '.pxo-settings-hero h2{margin:6px 0 4px;font-size:16px;letter-spacing:3px;'
   + 'color:var(--pxo-ink);font-weight:700;'
   + 'text-shadow:2px 0 0 rgba(255,92,171,.5),-2px 0 0 rgba(92,224,255,.5);}'
