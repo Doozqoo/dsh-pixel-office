@@ -64,10 +64,14 @@ function readScheme(snapshot: unknown): 'light' | 'dark' | undefined {
 /**
  * Services this plugin consumes. `slots` is the hard dependency: without it
  * the scene cannot mount at all, so Cordis holds the fiber PENDING until it
- * appears. The remaining services are read optionally through `ctx.get` so a
- * composition lacking one degrades instead of never activating.
+ * appears. `remote` and `theme` are declared so the plugin fiber can resolve
+ * them from the host root context: `remote` provides the only reliable write
+ * surface on master, and `theme` is needed for the pixel token override. The
+ * remaining services (`workspaces`, `uiWorkspace`, `sessions`) are read
+ * optionally through `ctx.get` so a composition lacking one degrades instead
+ * of never activating.
  */
-export const inject = ['slots']
+export const inject = ['slots', 'remote', 'theme']
 
 /**
  * Mount the Pixel Office scene.
@@ -115,6 +119,7 @@ export function apply(ctx: ClientContext): void {
     remoteWorkspace: typeof remoteWorkspace,
     remoteSession: typeof remoteSession,
     remoteDirectoryPicker: typeof remoteDirectoryPicker,
+    theme: typeof theme,
   })
 
   /**
