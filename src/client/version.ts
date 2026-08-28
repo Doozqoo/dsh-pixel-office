@@ -64,9 +64,10 @@ function readHostVersion(): string | undefined {
  * There is deliberately no network call and no service lookup here. The web
  * client exposes its build version to nobody: no cordis service carries it
  * (nothing `provide`s `version`/`meta`, so there is nothing to declare in
- * `inject`), nothing is written to `window`, and the `process.env.DSH_CLIENT_*`
- * values are substituted inside the *shell's* bundle — this plugin is built by
- * its own tsdown pass and never sees them. The sidebar brand's rendered text
+ * `inject`), nothing is written to `window`, and the host's
+ * DSH_CLIENT_VERSION / _COMMIT_HASH / _GIT_DIRTY env values are inlined into
+ * the *shell's* bundle at build time — this plugin is built by its own
+ * tsdown pass and never sees them. The sidebar brand's rendered text
  * is the only copy that reaches the page as readable data, so it is the source.
  *
  * Returns `undefined` rather than a guess when the badge cannot be found;
