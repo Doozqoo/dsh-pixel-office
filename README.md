@@ -8,19 +8,11 @@
 
 ## ⚠️ 版本兼容性（安装前请先看）
 
-| DeepSeek Harness | 支持情况 |
-|---|---|
-| **≥ 0.1.2-alpha.1**（`master` 分支，客户端 runtime 已拆分为 `api/*` + `ui/*`） | ✅ 支持 |
-| **0.1.1-rc.2**（`v2` 分支，仍是单体 `packages/client/runtime`） | ❌ 不支持 |
+**本插件只支持 DeepSeek Harness 的最新版本**（≥ `0.1.2-alpha.1`，客户端 runtime 已拆分为 `api/*` + `ui/*`）。更早的基座版本一律不支持，也不再做向下兼容。
 
-**为什么不能一份清单通吃两个基座**：两个版本的 `dsh.client.inject` 依赖互不兼容——
+原因不是偷懒：不同基座的 `dsh.client.inject` 依赖清单互不兼容（当前基座已删除 `@deepseek-ai/dsh-client-runtime`，旧基座则缺少 `session-controller` / `workspace-controller` 等包），一份 manifest 无法通吃。**解决办法只有一个：把 DeepSeek Harness 升到最新版。**
 
-- v2 的 `packages/api/` 下只有 `gateway` 与 `remotes`，**没有** `session-controller` / `workspace-controller`；
-- master 已**删除** `@deepseek-ai/dsh-client-runtime`（v2 清单里还引着它）。
-
-因此 manifest 必须按基座分别维护。本仓库当前**只维护 master 版本**。若你仍在使用 v2，请停在本仓库的旧提交，或自行把 `package.json` 的 `dsh.client.inject` 改回 v2 包集。
-
-**切换基座后务必重新挂载**（`dsh.client.inject` 在插件加入 profile 时解析一次，重启 `dsh web` **不会**重读）：
+**升级基座后务必重新挂载**（`dsh.client.inject` 在插件加入 profile 时解析一次，重启 `dsh web` **不会**重读）：
 
 ```powershell
 dsh plugin --profile web remove dsh-client-pixel-office
@@ -68,7 +60,7 @@ dsh plugin --profile web add <本仓库绝对路径>
 | **工位排序** | 顶视图工具栏「排序」分段控件：**手动**（默认，布局完全交给拖拽）/ **活跃度**（按各工位最近会话活动时间重排，一次性应用，之后仍可继续拖拽微调）。「未分组」始终钉在第 1 格 |
 | **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号） |
 | **版本标识** | 顶视图底部状态条右端与设置页 hero 显示 `POWERED BY DSH <基座版本号>`（如 `0.1.2-alpha.1-cd5ef81-dirty`）。显示的是**宿主基座**的版本，不是本插件的——基座只在侧边栏品牌区把这串文本渲染出来（由 `process.env.DSH_CLIENT_VERSION/COMMIT_HASH/GIT_DIRTY` 构建期内联），没有 cordis 服务、没有 `window` 全局、也没有 meta 标签，因此插件从 `[data-slot="sidebar"]` 里读。读不到时只显示 `POWERED BY DSH`，绝不猜一个版本号 |
-| **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——master 的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
+| **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——基座的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
 
 ## 安装
 
@@ -78,7 +70,7 @@ Pixel Office 是标准的 DSH Profile Bundle。安装的本质是把一个声明
 
 - Node.js 22+（`engines` 锁定）
 - pnpm 10+（`packageManager` 锁定，建议 corepack）
-- 一个能运行 `dsh web` 的 DeepSeek Harness
+- **最新版** DeepSeek Harness（≥ `0.1.2-alpha.1`）；更早版本不支持，见上方「版本兼容性」
 
 **profile 目录**：默认 `$DSH_HOME/profiles/web`，未设 `DSH_HOME` 时即 `~/.dsh/profiles/web`。
 
@@ -211,7 +203,7 @@ pnpm typecheck            # tsc -b --force
 
 ### 给二次开发者的两条硬约束
 
-1. **服务必须先声明才能拿到。** master 的 `cordis-client-runner` 守卫只把插件 fiber 在 `export const inject` 中声明过的服务交给插件；未声明的服务 `ctx.get` 一律返回 `undefined`。加新能力时先把服务名加进 `inject`。
+1. **服务必须先声明才能拿到。** 基座的 `cordis-client-runner` 守卫只把插件 fiber 在 `export const inject` 中声明过的服务交给插件；未声明的服务 `ctx.get` 一律返回 `undefined`。加新能力时先把服务名加进 `inject`。
    > 排查技巧：临时加一条 `console.log(typeof ctx.get('<服务名>'))`，按「哪个是 `undefined` 就补声明哪个」逐轮二分。**不要只靠读 `cordis.patch.yml` 判断**——bundle 里列了某个 controller 服务，不等于插件 `ctx` 能 `get` 到。
 2. **`ctx.remote` 用不了。** Host Remote 属于 `@deepseek-ai/dsh-api-gateway`，而 `api-gateway` 与 `typert` 都不在 web 编排里；守卫还会直接拦截，代码里出现 `ctx.get('remote')` 就会报
    `cannot get property "remote.workspace" without inject`。
