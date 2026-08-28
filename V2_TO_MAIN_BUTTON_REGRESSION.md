@@ -3,7 +3,41 @@
 **范围**：`deepseek-harness` `v2`（`b150a551b8`，0.1.1-rc.2） → `master`（`cd5ef81481`，0.1.2-alpha.1）
 **对象**：`dsh-pixel-office` 插件在切到 `master` 后失效的按钮
 **分析日期**：2026-08-27
-**结论前置**：根本原因是 **一次客户端 runtime 拆分提交把多个方法从 `workspaces` 服务搬到了新建的 `uiWorkspace` 服务**，插件仍按 v2 契约调用旧位置导致 `undefined` → TypeError 被吞掉。但更关键的是：**第三方主题插件的 Cordis 上下文并不会暴露 `workspaces` / `uiWorkspace` / `sessions` 这些内部 controller 服务**，无论 bundle 是否列了它们。因此 `uiWorkspace?.x ?? workspaces?.x` 在插件运行时**永远落到 `undefined` 分支**，全部写操作走到"服务离线"提示。真正可靠、且唯一能触达的写入口是宿主生成的 **`ctx.remote.{workspace,session,directoryPicker}`** RPC。
+**最终解决**：2026-08-28（见下一节；下文 §1–§10 为排查过程记录，其中多个阶段性结论已被运行时验证推翻）
+
+---
+
+## ✅ 最终结论（2026-08-28 实测跑通，以此为准）
+
+**根因**：master 的 `cordis-client-runner` 守卫（`packages/extensions/cordis-client-runner/src/client/guard.ts`）只把**插件 fiber 在 `export const inject` 中声明过的服务**交给插件。像素插件一直只声明 `['slots']`，于是 `workspaces` / `uiWorkspace` / `sessions` / `theme` 全部解析为 `undefined`，所有写操作与主题覆盖失效。
+
+**修复**：
+
+```ts
+// src/client/index.tsx
+export const inject = ['slots', 'theme', 'workspaces', 'uiWorkspace', 'sessions']
+```
+
+并据此重写写路径（不再有任何 remote 兜底）：
+
+| 操作 | 走的服务 |
+|---|---|
+| 新建工位 | `uiWorkspace.pickDirectory`（或 `workspaces.pickDirectory`）+ `workspaces.create` |
+| 重命名 | `workspaces.rename` |
+| 删除/清空 | `workspaces.delete` |
+| 新建会话 | `uiWorkspace.connectWorkspace` → `workspaces.connectWorkspace` → `sessions.create` |
+| 归档便利贴 | `uiWorkspace.archiveSession` → `workspaces.archiveSession` |
+
+**必须记住的两条坑**：
+
+1. **`ctx.remote` 对 web 端动态插件彻底不可用**。`remote` 由 `@deepseek-ai/dsh-api-gateway` 提供，而 `api-gateway` / `typert` **都不在** `packages/bundle/web-app/cordis.patch.yml`；且守卫直接拦截，代码里出现 `ctx.get('remote')` 或 `remoteWorkspace?.x` 就会报
+   `Error: cannot get property "remote.workspace" without inject`。
+   本报告早期"唯一写入口是 `ctx.remote`"的判断**是错的**，相关提交已被 `d276b26` 回滚。
+2. **静态分析不可靠**。`cordis.patch.yml` 列了某 controller 服务 **≠** 插件 `ctx` 能 `get` 到。本报告据此误判过两次。正确做法是加诊断日志按 `typeof` 逐轮二分。
+
+**关键提交**：`b68d175`（声明三个服务）、`d276b26`（移除全部 remote 依赖）。功能已于 2026-08-28 23:52 由用户确认恢复正常。
+
+> 下文为排查过程存档，保留以记录走过的弯路；结论一律以上述"最终结论"为准。
 
 > 🔴 **运行时已证实（2026-08-27 用户截图）**：点击"新建会话"显示 `会话链路不可用 / SESSION LINK OFFLINE`、点击"新建工位"显示 `工作区服务离线 / WORKSPACE LINK OFFLINE`，证明 `ctx.get('workspaces')` 与 `ctx.get('uiWorkspace')` 在插件上下文里**就是 `undefined`**。`cordis.patch.yml` 列了 controller 服务 ≠ 插件 `ctx` 能 `get` 到它们。
 
