@@ -104,33 +104,12 @@ export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
   /**
-   * On master the cordis-client-runner guard only exposes services declared
-   * in `inject`; every mutation below uses whichever of these direct services
-   * resolve. `remote` is not accessible to dynamic plugins in the web bundle
-   * (api-gateway/typert are not part of the web composition).
+   * These four are the plugin's whole write surface, and they are only
+   * reachable because {@link inject} declares them. `ctx.remote` is not an
+   * option: it belongs to `@deepseek-ai/dsh-api-gateway`, which is absent
+   * from the web composition, and the runner's guard rejects any read of it
+   * with `cannot get property "remote.…" without inject`.
    */
-
-  // One-shot diagnostic log so a failing runtime immediately shows what the
-  // plugin can actually see. This is intentionally kept: theme plugins run
-  // against multiple harness versions and the available surface changes.
-  // Print the discovered keys too, not just `typeof`: a resolved service that
-  // exposes an unexpected method set is the difference between "works" and
-  // "resolves but every verb is missing".
-  const keysOf = (value: unknown): readonly string[] | null =>
-    value === null || value === undefined || typeof value !== 'object'
-      ? null
-      : Object.keys(value as object).slice(0, 24)
-  console.log('[pixel-office] runtime services:', {
-    slots: typeof slots,
-    theme: typeof theme,
-    themeKeys: keysOf(theme),
-    workspaces: typeof workspaces,
-    workspacesKeys: keysOf(workspaces),
-    uiWorkspace: typeof uiWorkspace,
-    uiWorkspaceKeys: keysOf(uiWorkspace),
-    sessions: typeof sessions,
-    sessionsKeys: keysOf(sessions),
-  })
 
   /**
    * Resolve the most recent message of a session for the hover preview.

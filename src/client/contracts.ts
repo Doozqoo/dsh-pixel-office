@@ -17,51 +17,15 @@ export type Disposer = () => void
 export type SnapshotHook<S> = <T>(select: (state: S) => T) => T
 
 /**
- * Wire success/failure envelope the host Remote layer returns.
+ * Note on `ctx.remote`: it is NOT modelled here on purpose.
  *
- * Matches `@deepseek-ai/dsh-typert-protocol`'s `RemoteResult<T>` exactly:
- * a flat `{ ok: true, value } | { ok: false, error }` — there is NO `result`
- * wrapper. A handler that reads `outcome.result.ok` would throw
- * "Cannot read properties of undefined" the moment the call resolves, so the
- * plugin always reads `outcome.ok` / `outcome.value` / `outcome.error` directly.
+ * The Host Remote namespaces belong to `@deepseek-ai/dsh-api-gateway`, which
+ * is not part of the web composition (`packages/bundle/web-app/cordis.patch.yml`
+ * lists neither `api-gateway` nor `typert`), and the runner's guard rejects any
+ * read of it from a dynamic plugin with
+ * `cannot get property "remote.…" without inject`. Every mutation therefore
+ * goes through the direct services below.
  */
-export type RemoteResult<T> =
-  | { readonly ok: true, readonly value: T }
-  | { readonly ok: false, readonly error: { readonly code: string, readonly message: string } }
-
-/** Minimum surface of the host-generated Workspace Remote namespace. */
-export interface WorkspaceRemoteApi {
-  create(input: { readonly path: string }): Promise<RemoteResult<unknown>>
-  delete(input: { readonly workspaceId: string }): Promise<RemoteResult<unknown>>
-  rename(input: { readonly workspaceId: string, readonly title: string }): Promise<RemoteResult<unknown>>
-  archiveSession(input: { readonly sessionId: string }): Promise<RemoteResult<unknown>>
-}
-
-/** Minimum surface of the host-generated Session Remote namespace. */
-export interface SessionRemoteApi {
-  create(input: { readonly workspaceId?: string, readonly cwd?: string, readonly sessionId?: string, readonly agentPreset?: string }): Promise<RemoteResult<{ readonly sessionId: string }>>
-}
-
-/** Minimum surface of the host-generated Directory Picker Remote namespace. */
-export interface DirectoryPickerRemoteApi {
-  pick(): Promise<RemoteResult<string | null>>
-}
-
-/**
- * Subset of the host gateway `ctx.remote` this plugin reaches for.
- *
- * Third-party theme plugins run in a Cordis context that does NOT expose the
- * internal `workspaces` / `uiWorkspace` controller services on `master`; the
- * only reliable write surface is the generated Host Remote namespace. We keep
- * the service lookups (`workspaces`, `uiWorkspace`, `sessions`) as fast paths
- * for `v2` or future versions that may expose them, and fall back to
- * `ctx.remote.{workspace,session,directoryPicker}` when they are absent.
- */
-export interface HostRemote {
-  readonly workspace: WorkspaceRemoteApi
-  readonly session: SessionRemoteApi
-  readonly directoryPicker: DirectoryPickerRemoteApi
-}
 
 /** One workspace as the workspace list publishes it. */
 export interface WorkspaceRecord {

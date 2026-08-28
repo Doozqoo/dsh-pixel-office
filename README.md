@@ -6,6 +6,27 @@
 
 整套主题使用 CRT 扫描线、马赛克瓦片消除、CRT 开机转场、像素猫眨眼、便利贴悬停抬起等动效；侧栏被裁切掉、控制台顶部 HUD 横贯、霓虹色板覆盖整套界面。
 
+## ⚠️ 版本兼容性（安装前请先看）
+
+| DeepSeek Harness | 支持情况 |
+|---|---|
+| **≥ 0.1.2-alpha.1**（`master` 分支，客户端 runtime 已拆分为 `api/*` + `ui/*`） | ✅ 支持 |
+| **0.1.1-rc.2**（`v2` 分支，仍是单体 `packages/client/runtime`） | ❌ 不支持 |
+
+**为什么不能一份清单通吃两个基座**：两个版本的 `dsh.client.inject` 依赖互不兼容——
+
+- v2 的 `packages/api/` 下只有 `gateway` 与 `remotes`，**没有** `session-controller` / `workspace-controller`；
+- master 已**删除** `@deepseek-ai/dsh-client-runtime`（v2 清单里还引着它）。
+
+因此 manifest 必须按基座分别维护。本仓库当前**只维护 master 版本**。若你仍在使用 v2，请停在本仓库的旧提交，或自行把 `package.json` 的 `dsh.client.inject` 改回 v2 包集。
+
+**切换基座后务必重新挂载**（`dsh.client.inject` 在插件加入 profile 时解析一次，重启 `dsh web` **不会**重读）：
+
+```powershell
+dsh plugin --profile web remove dsh-client-pixel-office
+dsh plugin --profile web add <本仓库绝对路径>
+```
+
 ## 视觉
 
 ### 俯视图：24 工位网格
@@ -44,7 +65,9 @@
 | **马赛克消除** | 开便利贴时，conversation slot 上盖主题色马赛克遮罩，每个小方块随机逐个 pop 消失，露出下面的真实对话 |
 | **像素猫** | 仅在工位有会话运行时出现于显示器里；静止偶尔眨眼；待机时不显示 |
 | **动效档位** | `CALM`（仅保留配色，停止环境动效）/ `OVERDRIVE`（全动效）；尊重宿主 `prefers-reduced-motion` |
-| **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号）；订阅基座 4 个注入服务（runtime / ui-theme / ui-layout / ui-settings） |
+| **工位排序** | 顶视图工具栏「排序」分段控件：**手动**（默认，布局完全交给拖拽）/ **活跃度**（按各工位最近会话活动时间重排，一次性应用，之后仍可继续拖拽微调）。「未分组」始终钉在第 1 格 |
+| **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号） |
+| **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——master 的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
 
 ## 安装
 
@@ -182,6 +205,16 @@ pnpm typecheck            # tsc -b --force
 ```
 
 构建产物（`lib/client.js`、`lib/index.js`、`.d.ts`、sourcemap）由 tsdown 一次性产出。Plug-and-play：dev server 读 `lib/client.js`，不在 `src/` 上跑。
+
+改完 `src/` 必须 `pnpm build` 并**重启 `dsh web` + 浏览器硬刷新**——第三方插件没有 HMR，否则仍在跑旧 bundle。
+
+### 给二次开发者的两条硬约束
+
+1. **服务必须先声明才能拿到。** master 的 `cordis-client-runner` 守卫只把插件 fiber 在 `export const inject` 中声明过的服务交给插件；未声明的服务 `ctx.get` 一律返回 `undefined`。加新能力时先把服务名加进 `inject`。
+   > 排查技巧：临时加一条 `console.log(typeof ctx.get('<服务名>'))`，按「哪个是 `undefined` 就补声明哪个」逐轮二分。**不要只靠读 `cordis.patch.yml` 判断**——bundle 里列了某个 controller 服务，不等于插件 `ctx` 能 `get` 到。
+2. **`ctx.remote` 用不了。** Host Remote 属于 `@deepseek-ai/dsh-api-gateway`，而 `api-gateway` 与 `typert` 都不在 web 编排里；守卫还会直接拦截，代码里出现 `ctx.get('remote')` 就会报
+   `cannot get property "remote.workspace" without inject`。
+   所有写操作请走 `workspaces` / `uiWorkspace` / `sessions` 三个直接服务。
 
 ## 发布
 
