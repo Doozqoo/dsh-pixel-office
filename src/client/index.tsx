@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type {
-  ClientContext, Disposer, HostRemote, OverlayProps, SessionsService,
+  ClientContext, Disposer, OverlayProps, SessionsService,
   SessionFaceMirror, SlotsService, ThemeService, UiWorkspaceService,
   WorkspacesService,
 } from './contracts.ts'
@@ -104,16 +104,11 @@ export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
   /**
-   * Host Remote namespaces are the only write surface reliably visible to a
-   * third-party theme plugin across `v2` and `master`. The internal
-   * `workspaces` / `uiWorkspace` / `sessions` services may or may not be
-   * exposed depending on the Cordis context, so every mutation below tries
-   * the direct service first and falls back to the corresponding Remote RPC.
+   * On master the cordis-client-runner guard only exposes services declared
+   * in `inject`; every mutation below uses whichever of these direct services
+   * resolve. `remote` is not accessible to dynamic plugins in the web bundle
+   * (api-gateway/typert are not part of the web composition).
    */
-  const hostRemote = ctx.get('remote') as HostRemote | undefined
-  const remoteWorkspace = hostRemote?.workspace
-  const remoteSession = hostRemote?.session
-  const remoteDirectoryPicker = hostRemote?.directoryPicker
 
   // One-shot diagnostic log so a failing runtime immediately shows what the
   // plugin can actually see. This is intentionally kept: theme plugins run
@@ -135,7 +130,6 @@ export function apply(ctx: ClientContext): void {
     uiWorkspaceKeys: keysOf(uiWorkspace),
     sessions: typeof sessions,
     sessionsKeys: keysOf(sessions),
-    remote: typeof hostRemote,
   })
 
   /**
@@ -193,21 +187,12 @@ export function apply(ctx: ClientContext): void {
    * toast when the running harness does not expose `workspaces.rename`.
    */
   const renameWorkspace = async (workspaceId: string, title: string): Promise<void> => {
-    if (workspaces?.rename === undefined && remoteWorkspace?.rename === undefined) {
+    if (workspaces?.rename === undefined) {
       store.set({ notice: '重命名不可用 / RENAME OFFLINE' })
       return
     }
     try {
-      // Prefer the direct `workspaces` service when present; otherwise fall
-      // back to the gateway Remote namespace (the normal path on master).
-      if (workspaces?.rename !== undefined) {
-        await workspaces.rename(workspaceId, title)
-      } else if (remoteWorkspace?.rename !== undefined) {
-        const outcome = await remoteWorkspace.rename({ workspaceId, title })
-        if (!outcome.ok) throw new Error(`workspace.rename failed: ${outcome.error.code} ${outcome.error.message}`)
-      } else {
-        throw new Error('workspace.rename unavailable')
-      }
+      await workspaces.rename(workspaceId, title)
       store.set({ notice: '工位重命名 / STATION RELABELED' })
     } catch (error) {
       console.error(`${PLUGIN_ID}: workspace rename failed`, error)
@@ -408,8 +393,8 @@ export function apply(ctx: ClientContext): void {
     }, [missing])
 
     const createWorkspace = async (pos?: number) => {
-      const canCreate = workspaces?.create !== undefined || remoteWorkspace?.create !== undefined
-      const canPick = uiWorkspace?.pickDirectory !== undefined || workspaces?.pickDirectory !== undefined || remoteDirectoryPicker?.pick !== undefined
+      const canCreate = workspaces?.create !== undefined
+      const canPick = uiWorkspace?.pickDirectory !== undefined || workspaces?.pickDirectory !== undefined
       if (!canCreate || !canPick) {
         store.set({ notice: '工作区服务离线 / WORKSPACE LINK OFFLINE' })
         return
@@ -419,13 +404,8 @@ export function apply(ctx: ClientContext): void {
         let path: string | null
         if (uiWorkspace?.pickDirectory !== undefined) {
           path = await uiWorkspace.pickDirectory()
-        } else if (workspaces?.pickDirectory !== undefined) {
-          path = await workspaces.pickDirectory()
         } else {
-          // master: directory picker lives in its own Remote namespace.
-          const outcome = await remoteDirectoryPicker!.pick()
-          if (!outcome.ok) throw new Error(`directory picker failed: ${outcome.error.code} ${outcome.error.message}`)
-          path = outcome.value
+          path = await workspaces.pickDirectory!()
         }
         if (path === null || path === '') {
           store.set({ notice: null, pendingLayout: null })
@@ -439,16 +419,7 @@ export function apply(ctx: ClientContext): void {
         if (pos !== undefined) {
           store.set({ pendingLayout: { pos, before: deskIdKey } })
         }
-        // Prefer the direct `workspaces` service when present; otherwise fall
-        // back to the gateway Remote namespace (the normal path on master).
-        if (workspaces?.create !== undefined) {
-          await workspaces.create({ path })
-        } else if (remoteWorkspace?.create !== undefined) {
-          const outcome = await remoteWorkspace.create({ path })
-          if (!outcome.ok) throw new Error(`workspace.create failed: ${outcome.error.code} ${outcome.error.message}`)
-        } else {
-          throw new Error('workspace.create unavailable')
-        }
+        await workspaces.create({ path })
         store.set({ notice: '神经链接已建立 / WORKSPACE LINKED' })
       } catch (error) {
         console.error(`${PLUGIN_ID}: workspace creation failed`, error)
@@ -517,15 +488,13 @@ export function apply(ctx: ClientContext): void {
     /**
      * Resolve (or create) the id of a blank session bound to `workspaceId`.
      *
-     * Tries surfaces in order of specificity, ending at the gateway Remote RPC
-     * that is the only write surface reliably visible to a third-party theme
-     * plugin on `master` (the internal `workspaces` / `uiWorkspace` /
-     * `sessions` controller services are NOT exposed to the plugin context).
+     * On master the cordis-client-runner guard only exposes services declared
+     * in the plugin's `inject`; we declared `workspaces`, `uiWorkspace` and
+     * `sessions`, so these direct services are the available write surface.
      *  1. `uiWorkspace.connectWorkspace` — master direct service (if present)
      *  2. `workspaces.connectWorkspace` — v2 direct service (if present)
      *  3. `sessions.create({ workspaceId })` — internal controller (if exposed)
-     *  4. `ctx.remote.session.create({ workspaceId })` — always-available RPC
-     * @throws when none of the four surfaces can resolve an id.
+     * @throws when none of the three surfaces can resolve an id.
      */
     const resolveSessionId = async (workspaceId: string): Promise<string> => {
       if (uiWorkspace?.connectWorkspace !== undefined) {
@@ -536,11 +505,6 @@ export function apply(ctx: ClientContext): void {
       }
       if (sessions?.create !== undefined) {
         return await sessions.create({ workspaceId })
-      }
-      if (remoteSession?.create !== undefined) {
-        const outcome = await remoteSession.create({ workspaceId })
-        if (!outcome.ok) throw new Error(`session.create failed: ${outcome.error.code} ${outcome.error.message}`)
-        return outcome.value.sessionId
       }
       throw new Error('no session-create surface available')
     }
@@ -553,14 +517,12 @@ export function apply(ctx: ClientContext): void {
         store.set({ notice: '未分组为只读 / UNGROUPED IS READ-ONLY' })
         return
       }
-      // Any of four surfaces can spawn a session (see resolveSessionId). On
-      // `master` the only one actually present in the plugin context is the
-      // gateway Remote RPC, so proceed whenever at least one resolves an id.
+      // Any of the three declared services can spawn a session (see
+      // resolveSessionId). Proceed only if at least one resolves an id.
       const canConnect =
         uiWorkspace?.connectWorkspace !== undefined ||
         workspaces?.connectWorkspace !== undefined ||
-        sessions?.create !== undefined ||
-        remoteSession?.create !== undefined
+        sessions?.create !== undefined
       if (!canConnect || activeDesk === undefined) {
         store.set({ modal: null, notice: '会话链路不可用 / SESSION LINK OFFLINE' })
         return
@@ -689,30 +651,18 @@ export function apply(ctx: ClientContext): void {
           notes={notes}
           onAdd={(pos, text) => { void addSession(pos, text) }}
           onTear={(sessionId) => {
-            // Try `uiWorkspace` (master), then `workspaces` (v2), then the
-            // gateway Remote RPC — the only surface actually reachable from a
-            // third-party plugin context on master.
+            // Try `uiWorkspace` (master) then `workspaces` (v2).
             if (uiWorkspace?.archiveSession !== undefined) {
               void uiWorkspace.archiveSession(sessionId)
             } else if (workspaces?.archiveSession !== undefined) {
               void workspaces.archiveSession(sessionId)
-            } else if (remoteWorkspace?.archiveSession !== undefined) {
-              void remoteWorkspace.archiveSession({ sessionId })
             }
           }}
           onClear={async (workspaceId) => {
-            // Prefer the direct `workspaces` (WorkspaceController) wrapper when
-            // present (v2), but on `master` the plugin context does NOT expose
-            // that service — the gateway Remote namespace is the normal path
-            // there. Both branches are real, not just defensive.
-            if (workspaces?.delete !== undefined) {
-              await workspaces.delete(workspaceId)
-            } else if (remoteWorkspace?.delete !== undefined) {
-              const outcome = await remoteWorkspace.delete({ workspaceId })
-              if (!outcome.ok) throw new Error(`workspace.delete failed: ${outcome.error.code} ${outcome.error.message}`)
-            } else {
+            if (workspaces?.delete === undefined) {
               throw new Error('workspace.delete unavailable')
             }
+            await workspaces.delete(workspaceId)
           }}
           onRename={(workspaceId, title) => { void renameWorkspace(workspaceId, title) }}
         />
