@@ -62,16 +62,22 @@ function readScheme(snapshot: unknown): 'light' | 'dark' | undefined {
 }
 
 /**
- * Services this plugin consumes. `slots` is the hard dependency: without it
- * the scene cannot mount at all, so Cordis holds the fiber PENDING until it
- * appears. `remote` and `theme` are declared so the plugin fiber can resolve
- * them from the host root context: `remote` provides the only reliable write
- * surface on master, and `theme` is needed for the pixel token override. The
- * remaining services (`workspaces`, `uiWorkspace`, `sessions`) are read
- * optionally through `ctx.get` so a composition lacking one degrades instead
- * of never activating.
+ * Services this plugin consumes, declared so the plugin fiber can resolve
+ * them from the host root context.
+ *
+ * On master the cordis-client-runner guard only hands a plugin the services
+ * its fiber declared: an undeclared name returns `undefined` from `ctx.get`
+ * even when the host composition provides it. `slots` is the hard dependency
+ * (without it the scene cannot mount and the fiber stays PENDING); `theme`
+ * carries the pixel token override; `workspaces` / `uiWorkspace` /
+ * `sessions` are the write surface (create/delete/rename/connect/archive).
+ *
+ * `remote` is deliberately NOT declared: it is provided by
+ * `@deepseek-ai/dsh-api-gateway`, which is absent from the web bundle, so the
+ * web client has no `ctx.remote` at all. Earlier fallbacks that routed through
+ * it could never have worked.
  */
-export const inject = ['slots', 'remote', 'theme']
+export const inject = ['slots', 'theme', 'workspaces', 'uiWorkspace', 'sessions']
 
 /**
  * Mount the Pixel Office scene.
@@ -112,14 +118,24 @@ export function apply(ctx: ClientContext): void {
   // One-shot diagnostic log so a failing runtime immediately shows what the
   // plugin can actually see. This is intentionally kept: theme plugins run
   // against multiple harness versions and the available surface changes.
+  // Print the discovered keys too, not just `typeof`: a resolved service that
+  // exposes an unexpected method set is the difference between "works" and
+  // "resolves but every verb is missing".
+  const keysOf = (value: unknown): readonly string[] | null =>
+    value === null || value === undefined || typeof value !== 'object'
+      ? null
+      : Object.keys(value as object).slice(0, 24)
   console.log('[pixel-office] runtime services:', {
-    workspaces: typeof workspaces,
-    uiWorkspace: typeof uiWorkspace,
-    sessions: typeof sessions,
-    remoteWorkspace: typeof remoteWorkspace,
-    remoteSession: typeof remoteSession,
-    remoteDirectoryPicker: typeof remoteDirectoryPicker,
+    slots: typeof slots,
     theme: typeof theme,
+    themeKeys: keysOf(theme),
+    workspaces: typeof workspaces,
+    workspacesKeys: keysOf(workspaces),
+    uiWorkspace: typeof uiWorkspace,
+    uiWorkspaceKeys: keysOf(uiWorkspace),
+    sessions: typeof sessions,
+    sessionsKeys: keysOf(sessions),
+    remote: typeof hostRemote,
   })
 
   /**
