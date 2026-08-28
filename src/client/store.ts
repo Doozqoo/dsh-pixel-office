@@ -105,6 +105,16 @@ export interface SceneState {
   readonly link: 'ok' | 'lost'
   /** Host appearance scheme reported by `theme/change`. */
   readonly scheme: 'light' | 'dark'
+  /**
+   * Top-view desk-order mode, reflected by the toolbar sort control.
+   *
+   * `'manual'` (default) leaves `layout` to the user's drag arrangement;
+   * `'activity'` means the last applied sort was by recent activity. The mode
+   * is UI-only state and is deliberately NOT persisted — only `layout` (the
+   * actual order) survives a reload. Applying a sort is a one-shot reorder of
+   * `layout`; afterwards the user can still drag to fine-tune.
+   */
+  readonly sortMode: 'manual' | 'activity'
 }
 
 /** Movement in CSS pixels before a pointer press counts as a drag, not a click. */
@@ -130,6 +140,7 @@ const INITIAL: SceneState = {
   modal: null,
   link: 'ok',
   scheme: 'dark',
+  sortMode: 'manual',
 }
 
 type Listener = () => void

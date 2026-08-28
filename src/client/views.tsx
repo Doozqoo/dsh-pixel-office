@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY, formatRelative, hashIndex, swapCells } from './placement.ts'
+import type { Placement } from './placement.ts'
 import { DRAG_THRESHOLD, hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 import type { SessionFaceMirror } from './contracts.ts'
@@ -606,6 +607,36 @@ export function TopView(props: {
     store.set({ layout: swapCells(scene.layout, current.from, target) })
   }
 
+  /**
+   * Reorder the desk grid by the chosen mode (one-shot; manual drag still wins
+   * afterwards). `manual` only records the mode — the user owns `layout` via
+   * drag. `activity` ranks every real workspace by the most-recent session
+   * activity (the plugin's own `activity` stamps) and compacts them to the
+   * front, pinning 未分组 at cell 0 and pushing empty stations to the tail.
+   */
+  const applySort = (mode: 'manual' | 'activity'): void => {
+    if (mode === 'manual') {
+      store.set({ sortMode: 'manual' })
+      return
+    }
+    const realDesks = desks.filter(d => d.id !== UNGROUPED_KEY)
+    const recency = (id: string): number => {
+      const desk = realDesks.find(d => d.id === id)
+      if (desk === undefined) return 0
+      let max = 0
+      for (const sid of desk.sessionIds) {
+        const t = scene.activity[sid] ?? 0
+        if (t > max) max = t
+      }
+      return max
+    }
+    const ordered = [...realDesks].sort((a, b) => recency(b.id) - recency(a.id))
+    const next: (string | null)[] = new Array(DESKS).fill(null)
+    next[0] = UNGROUPED_KEY
+    ordered.forEach((d, i) => { if (i + 1 < DESKS) next[i + 1] = d.id })
+    store.set({ layout: next as Placement, sortMode: 'activity' })
+  }
+
   return (
     <div className="pxo-fill" data-mode="top">
       <Backdrop />
@@ -624,6 +655,25 @@ export function TopView(props: {
         <span className="pxo-toolbar-title">工作空间 / WORKSPACES</span>
         <span className="pxo-toolbar-sub">· {DESKS} 工位 · {onlineCount} 在线</span>
         <div className="pxo-toolbar-right">
+          <div className="pxo-sort" role="group" aria-label="工位排序">
+            <span className="pxo-sort-label">排序</span>
+            <button
+              type="button"
+              className={scene.sortMode === 'manual' ? 'pxo-chip is-active' : 'pxo-chip'}
+              aria-pressed={scene.sortMode === 'manual'}
+              onClick={() => { applySort('manual') }}
+            >
+              手动
+            </button>
+            <button
+              type="button"
+              className={scene.sortMode === 'activity' ? 'pxo-chip is-active' : 'pxo-chip'}
+              aria-pressed={scene.sortMode === 'activity'}
+              onClick={() => { applySort('activity') }}
+            >
+              活跃度
+            </button>
+          </div>
           <button
             type="button"
             className={filter === 'all' ? 'pxo-chip is-active' : 'pxo-chip'}

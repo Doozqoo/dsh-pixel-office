@@ -284,6 +284,11 @@ const CHROME = '.pxo-header{position:fixed;left:0;right:0;top:0;height:54px;z-in
   + '.pxo-toolbar-title{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--pxo-ink);}'
   + '.pxo-toolbar-sub{font-size:11px;color:var(--pxo-dim);letter-spacing:1px;}'
   + '.pxo-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;}'
+  // Sort group: a labelled cluster of the same neon chips used for the
+  // ALL/LIVE filter, so it reads as one controls family on the toolbar.
+  + '.pxo-sort{display:inline-flex;align-items:center;gap:6px;padding:3px 6px 3px 8px;'
+  + 'border:1px solid var(--pxo-edge);background:var(--pxo-bg3);}'
+  + '.pxo-sort-label{font-size:10px;letter-spacing:2px;color:var(--pxo-dim);font-weight:700;}'
   + '.pxo-chip{display:inline-flex;align-items:center;gap:6px;background:var(--pxo-bg3);'
   + 'border:1px solid var(--pxo-edge);padding:5px 9px;font-size:10px;'
   + 'letter-spacing:1px;color:var(--pxo-ink);cursor:pointer;font-weight:700;}'
