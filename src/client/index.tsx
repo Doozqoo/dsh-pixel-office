@@ -94,10 +94,14 @@ export function apply(ctx: ClientContext): void {
   const sessions = ctx.get('sessions') as SessionsService | undefined
   const theme = ctx.get('theme') as ThemeService | undefined
   /**
-   * `WorkspaceController` is NOT loaded by the web client composition on
-   * `master` — `ctx.get('workspaces')` resolves to `undefined`. The host
-   * gateway does publish the `remote` namespace, so `create` / `delete` /
-   * `rename` go straight through `ctx.remote.workspace`.
+   * `workspaces` (`WorkspaceController`) IS loaded by the web client
+   * composition on `master` — `cordis.patch.yml` ships the
+   * `workspace-controller` row, so `ctx.get('workspaces')` resolves to the
+   * real service and `create` / `delete` / `rename` live there. We still keep
+   * `ctx.remote.workspace` as a *defensive cross-version fallback* (the
+   * gateway Remote namespace is always published), used only if `workspaces`
+   * is ever absent. `connectWorkspace` / `pickDirectory` / `archiveSession`
+   * moved to the separate `uiWorkspace` service and are resolved there.
    */
   const hostRemote = ctx.get('remote') as HostRemote | undefined
   const remoteWorkspace = hostRemote?.workspace
@@ -162,8 +166,10 @@ export function apply(ctx: ClientContext): void {
       return
     }
     try {
-      // Prefer WorkspaceController wrapper on v2; on `master` the controller
-      // is not loaded, so go through the gateway Remote namespace.
+      // Prefer the `workspaces` (WorkspaceController) wrapper when present;
+      // fall back to the gateway Remote namespace only if `workspaces` is
+      // absent. On `master` `workspaces` is loaded, so this is the normal
+      // path — the remote branch is a defensive cross-version fallback.
       if (workspaces.rename !== undefined) {
         await workspaces.rename(workspaceId, title)
       } else if (remoteWorkspace !== undefined) {
@@ -397,8 +403,10 @@ export function apply(ctx: ClientContext): void {
         if (pos !== undefined) {
           store.set({ pendingLayout: { pos, before: deskIdKey } })
         }
-        // Prefer the WorkspaceController wrapper on v2; on `master` the
-        // controller is not loaded, so go through the gateway Remote namespace.
+        // Prefer the `workspaces` (WorkspaceController) wrapper when present;
+        // fall back to the gateway Remote namespace only if `workspaces` is
+        // absent. On `master` `workspaces` is loaded, so this is the normal
+        // path — the remote branch is a defensive cross-version fallback.
         if (workspaces?.create !== undefined) {
           await workspaces.create({ path })
         } else if (remoteWorkspace !== undefined) {
@@ -480,7 +488,9 @@ export function apply(ctx: ClientContext): void {
         store.set({ notice: '未分组为只读 / UNGROUPED IS READ-ONLY' })
         return
       }
-      if (workspaces === undefined || activeDesk === undefined) {
+      // Either `workspaces` (v2) or `uiWorkspace` (master) can resolve a
+      // session, so proceed as long as at least one of them is present.
+      if ((workspaces === undefined && uiWorkspace === undefined) || activeDesk === undefined) {
         store.set({ modal: null, notice: '会话链路不可用 / SESSION LINK OFFLINE' })
         return
       }
@@ -492,7 +502,7 @@ export function apply(ctx: ClientContext): void {
       // earlier note. The claim suspends that effect for this desk.
       store.set({ modal: null, pending: { wsId, pos }, notice: '正在生成会话节点… / SPAWNING NODE' })
       try {
-        const sid = await (uiWorkspace?.connectWorkspace ?? workspaces.connectWorkspace ?? (() => Promise.reject(new Error('connectWorkspace unavailable'))))(wsId)
+        const sid = await (uiWorkspace?.connectWorkspace ?? workspaces?.connectWorkspace ?? (() => Promise.reject(new Error('connectWorkspace unavailable'))))(wsId)
         const labels = { ...store.get().labels }
         if (text !== '') labels[sid] = text
         // Re-read: the grid may legitimately have changed while awaiting.
@@ -612,8 +622,10 @@ export function apply(ctx: ClientContext): void {
             if (archive !== undefined) void archive(sessionId)
           }}
           onClear={async (workspaceId) => {
-            // Prefer WorkspaceController on v2; on `master` the controller is
-            // not loaded, so go through the gateway Remote namespace.
+            // Prefer the `workspaces` (WorkspaceController) wrapper when present;
+            // fall back to the gateway Remote namespace only if `workspaces` is
+            // absent. On `master` `workspaces` is loaded, so this is the normal
+            // path — the remote branch is a defensive cross-version fallback.
             if (workspaces?.delete !== undefined) {
               await workspaces.delete(workspaceId)
             } else if (remoteWorkspace !== undefined) {

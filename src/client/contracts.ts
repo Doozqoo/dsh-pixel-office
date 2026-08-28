@@ -31,11 +31,19 @@ export interface WorkspaceRemoteApi {
 /**
  * Subset of the host gateway `ctx.remote` this plugin reaches for.
  *
- * `master` (>= 0.1.2-alpha.1) split the workspace lifecycle: the
- * `WorkspaceController` service (`ctx.workspaces`) is NOT loaded by the
- * web client composition, so `ctx.get('workspaces')` resolves to `undefined`.
- * Plugins must call `ctx.remote.workspace.{create,delete,rename}`
- * directly via the gateway Remote namespace.
+ * `master` (>= 0.1.2-alpha.1) split the workspace lifecycle into the
+ * `api/workspace-controller` (`ctx.workspaces`, still loaded by the web
+ * bundle) and `client/ui-workspace` (`ctx.uiWorkspace`) packages. The
+ * `workspaces` service keeps `create` / `delete` / `rename`; the new
+ * `uiWorkspace` service owns the UI-facing `connectWorkspace` /
+ * `pickDirectory` / `archiveSession`.
+ *
+ * Because a third-party plugin may run against either a `v2` or `master`
+ * host, `ctx.remote.workspace` is kept as a *defensive cross-version
+ * fallback* for `create` / `delete` / `rename` (the gateway Remote
+ * namespace is always published) — NOT because `workspaces` is offline. In
+ * normal operation `workspaces` is present and preferred; the remote branch
+ * fires only if `workspaces` is ever absent.
  */
 export interface HostRemote {
   readonly workspace: WorkspaceRemoteApi
