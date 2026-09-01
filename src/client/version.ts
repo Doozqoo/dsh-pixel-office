@@ -3,6 +3,8 @@
  * @module dsh-client-pixel-office/version
  */
 import { useEffect, useState } from 'react'
+import { SELECTORS } from './adapters/dom.ts'
+import { VERSION_RETRY_DELAYS } from './constants.ts'
 
 /**
  * Shape of the string the shell prints, e.g. `0.1.2-alpha.1-cd5ef81-dirty` —
@@ -12,23 +14,9 @@ import { useEffect, useState } from 'react'
  */
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 
-/** The slot anchor the shell wraps the sidebar in (`scoped-slots.tsx`). */
-const SIDEBAR_SELECTOR = '[data-slot="sidebar"]'
-
-/**
- * The badge inside it. The host styles it with a CSS module, so the attribute
- * value is a scoped name — vite's default pattern keeps the local name as a
- * substring (`_buildVersion_…`), which is what this matches on. It is a hint,
- * not a contract: {@link scanText} is the fallback if the naming ever changes.
- */
-const BADGE_SELECTOR = '[class*="buildVersion"]'
-
-/**
- * Retry delays, in ms, for the initial lookup. The sidebar mounts with the
- * shell, but plugin load is its own async step and can land on either side of
- * it — the first tick covers the common case, the tail covers a slow start.
- */
-const RETRY_DELAYS = [120, 380, 1000, 2000, 4000] as const
+/** Retry delays, in ms, for the initial lookup. */
+const RETRY_DELAYS = VERSION_RETRY_DELAYS
+export { VERSION_RETRY_DELAYS }
 
 /**
  * Return the first text node under `root` that is exactly a version string.
@@ -49,10 +37,10 @@ function scanText(root: Element): string | undefined {
  * @returns the version, or `undefined` when the badge is absent (sidebar
  *   collapsed, different shell, or the host stopped printing it).
  */
-function readHostVersion(): string | undefined {
-  const sidebar = document.querySelector(SIDEBAR_SELECTOR)
+export function readHostVersion(): string | undefined {
+  const sidebar = document.querySelector(SELECTORS.SIDEBAR)
   if (sidebar === null) return undefined
-  const badge = sidebar.querySelector(BADGE_SELECTOR)
+  const badge = sidebar.querySelector(SELECTORS.BUILD_VERSION)
   const text = badge?.textContent?.trim()
   if (text !== undefined && VERSION_PATTERN.test(text)) return text
   return scanText(sidebar)

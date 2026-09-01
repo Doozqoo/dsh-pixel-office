@@ -7,7 +7,8 @@
  * baseline specifiers), so an external store library would be dead weight.
  * @module dsh-client-pixel-office/store
  */
-import { DESKS, type Placement } from './placement.ts'
+import { DESKS, DRAG_THRESHOLD } from './constants.ts'
+import type { Placement } from './placement.ts'
 
 /** Which view the scene is showing. */
 export type Mode = 'top' | 'desk'
@@ -118,7 +119,7 @@ export interface SceneState {
 }
 
 /** Movement in CSS pixels before a pointer press counts as a drag, not a click. */
-export const DRAG_THRESHOLD = 6
+export { DRAG_THRESHOLD }
 
 const INITIAL: SceneState = {
   enabled: true,

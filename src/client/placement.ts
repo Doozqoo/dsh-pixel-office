@@ -4,27 +4,13 @@
  * @module dsh-client-pixel-office/placement
  */
 
-/** Desks in the top-down view: a 6x4 grid (6 columns, 4 rows). */
-export const DESKS = 24
+import {
+  DESKS, UNGROUPED_KEY, STICKER_COLORS, ACCENTS, NOTE_RATIO, SLEEPY_AFTER_MS,
+} from './constants.ts'
 
-/**
- * Synthetic key for the always-present "未分组 / Ungrouped" station.
- *
- * The harness surfaces orphaned sessions (those with no valid workspace) under
- * a virtual "未分组" group rather than a real workspace entity, so it has no
- * `workspaceId` of its own. The plugin mirrors that group as a fixed station at
- * cell 0, treated like a normal workspace for display but with its
- * rename / clear / delete / new-session affordances disabled (the harness
- * offers no verb to act on the group as a whole, nor to create a session
- * without a workspace).
- */
-export const UNGROUPED_KEY = '__ungrouped__'
-
-/** Sticky-note paper colors, chosen per session id so a note keeps its color. */
-export const STICKER_COLORS = ['#ffeda8', '#ffbacf', '#bdf7c7', '#bddbff', '#b0f2eb'] as const
-
-/** Neon accent colors, assigned per workspace id so each desk keeps its color. */
-export const ACCENTS = ['#5cff9e', '#5ce0ff', '#ffe35c', '#ff5cab', '#ff9e1c', '#6699ff'] as const
+export {
+  DESKS, UNGROUPED_KEY, STICKER_COLORS, ACCENTS, NOTE_RATIO,
+}
 
 /** One placement grid: an id per cell, or null for an empty cell. */
 export type Placement = readonly (string | null)[]
@@ -106,9 +92,6 @@ export function swapCells(grid: Placement, from: number, to: number): Placement 
   return next
 }
 
-/** Aspect ratio of one sticky note (width / height), used to size matrix cells. */
-export const NOTE_RATIO = 156 / 168
-
 /* ----------------------------------------------------------------------------
  * v2 feature logic — still pure (no React, no DOM), so it stays unit-testable.
  * --------------------------------------------------------------------------*/
@@ -125,9 +108,6 @@ export interface CatInput {
   /** Whether the user is actively typing in the conversation composer. */
   readonly userTyping: boolean
 }
-
-/** Idle threshold beyond which the cat dozes off. */
-const SLEEPY_AFTER_MS = 30 * 60 * 1000
 
 /**
  * Reduce the desk's live signals to one cat state.

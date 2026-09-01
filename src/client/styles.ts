@@ -10,8 +10,12 @@
  * raw color below is hard-coded from the office palette so the room looks
  * identical regardless of the host Appearance preference. Only the embedded
  * conversation (a portaled slot the renderer ships) borrows the host tokens.
+ *
+ * All harness DOM selectors are imported from {@link ./adapters/dom} so a
+ * harness DOM structure change is a single-file fix.
  * @module dsh-client-pixel-office/styles
  */
+import { SELECTORS } from './adapters/dom.ts'
 
 /**
  * Geometry + the office palette.
@@ -71,23 +75,23 @@ const GEOMETRY = ':root{'
  * z-index 500 sits above the desk-mode conversation (40) and monitor bezel
  * (45), and deliberately BELOW the 1100 that portaled dropdown lists use.
  */
-const SIDEBAR = '[data-slot="sidebar"]{'
+const SIDEBAR = `${SELECTORS.SIDEBAR}{`
   + 'display:block!important;position:fixed!important;left:0!important;top:0!important;'
   + 'width:0!important;height:0!important;overflow:hidden!important;'
   + 'pointer-events:none!important;z-index:500;}'
-  + '[data-slot="sidebar"] div:has(> [role="dialog"]),'
-  + '[data-slot="sidebar"] [role="dialog"]{pointer-events:auto!important;}'
-  // Skin the escaping settings dialog into the pixel language.
-  + '[data-slot="sidebar"] [role="dialog"]{font-family:var(--pxo-font)!important;'
-  + 'border-radius:0!important;background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;'
-  + 'box-shadow:0 0 0 3px var(--pxo-edge),0 0 0 6px var(--pxo-bg),0 0 0 9px var(--pxo-edge),'
-  + '0 0 24px var(--pxo-glow),10px 10px 0 rgba(0,0,0,.45)!important;}'
-  + '[data-slot="sidebar"] [role="dialog"] *{border-radius:0!important;'
-  + 'font-family:var(--pxo-font)!important;background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;}'
-  + '[data-slot="sidebar"] [role="dialog"] button{letter-spacing:1px;border-radius:0!important;}'
-  + '[data-slot="sidebar"] [role="dialog"] input,'
-  + '[data-slot="sidebar"] [role="dialog"] textarea{background:var(--pxo-bg3)!important;color:var(--pxo-ink)!important;'
-  + 'border-radius:0!important;font-family:var(--pxo-font)!important;}'
+  + `${SELECTORS.SIDEBAR} div:has(> [role="dialog"]),`
+	  + `${SELECTORS.SIDEBAR} [role="dialog"]{pointer-events:auto!important;}`
+	  // Skin the escaping settings dialog into the pixel language.
+	  + `${SELECTORS.SIDEBAR} [role="dialog"]{font-family:var(--pxo-font)!important;`
+	  + 'border-radius:0!important;background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;'
+	  + 'box-shadow:0 0 0 3px var(--pxo-edge),0 0 0 6px var(--pxo-bg),0 0 0 9px var(--pxo-edge),'
+	  + '0 0 24px var(--pxo-glow),10px 10px 0 rgba(0,0,0,.45)!important;}'
+	  + `${SELECTORS.SIDEBAR} [role="dialog"] *{border-radius:0!important;`
+	  + 'font-family:var(--pxo-font)!important;background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;}'
+	  + `${SELECTORS.SIDEBAR} [role="dialog"] button{letter-spacing:1px;border-radius:0!important;}`
+	  + `${SELECTORS.SIDEBAR} [role="dialog"] input,`
+	  + `${SELECTORS.SIDEBAR} [role="dialog"] textarea{background:var(--pxo-bg3)!important;color:var(--pxo-ink)!important;`
+	  + 'border-radius:0!important;font-family:var(--pxo-font)!important;}'
   + 'body [role="menu"]{font-family:var(--pxo-font)!important;border-radius:0!important;}'
   + 'body [role="menu"] *{border-radius:0!important;font-family:var(--pxo-font)!important;}'
 
@@ -105,33 +109,33 @@ const SIDEBAR = '[data-slot="sidebar"]{'
  * with no "closed" state to read: keying on the mode showed the previous
  * workspace's conversation on a desk that might hold no notes at all.
  */
-const CONVERSATION = 'body:has(.pxo-root[data-mode="top"]) [data-slot="conversation"]{visibility:hidden!important;}'
-  + 'body:has(.pxo-root[data-screen="off"]) [data-slot="conversation"]{visibility:hidden!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="details"]{display:none!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"]{'
-  + 'display:block!important;position:fixed!important;'
-  + 'left:var(--pxo-sx)!important;top:var(--pxo-sy)!important;'
-  + 'width:var(--pxo-sw)!important;height:calc(var(--pxo-sh) + 30px)!important;'
-  + 'z-index:40;overflow:hidden;background:var(--pxo-crt);color:var(--pxo-ink);'
-  + 'box-shadow:inset 0 0 46px rgba(92,255,158,.08)!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] > *{width:100%!important;height:100%!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] *{border-radius:0!important;font-family:var(--pxo-font)!important;}'
+const CONVERSATION = `body:has(.pxo-root[data-mode="top"]) ${SELECTORS.CONVERSATION}{visibility:hidden!important;}`
+	  + `body:has(.pxo-root[data-screen="off"]) ${SELECTORS.CONVERSATION}{visibility:hidden!important;}`
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.DETAILS}{display:none!important;}`
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION}{`
+	  + 'display:block!important;position:fixed!important;'
+	  + 'left:var(--pxo-sx)!important;top:var(--pxo-sy)!important;'
+	  + 'width:var(--pxo-sw)!important;height:calc(var(--pxo-sh) + 30px)!important;'
+	  + 'z-index:40;overflow:hidden;background:var(--pxo-crt);color:var(--pxo-ink);'
+	  + 'box-shadow:inset 0 0 46px rgba(92,255,158,.08)!important;}'
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} > *{width:100%!important;height:100%!important;}`
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} *{border-radius:0!important;font-family:var(--pxo-font)!important;}`
 
 /**
  * Composer: the textarea is transparent (caret only); the backdrop paints the
  * glyphs. Setting the textarea to a color makes the draft illegible.
  */
-const COMPOSER = 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] textarea{'
-  + 'background:transparent!important;color:transparent!important;'
-  + '-webkit-text-fill-color:transparent!important;caret-color:var(--pxo-neon)!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] textarea::placeholder{'
-  + 'color:var(--pxo-dim)!important;-webkit-text-fill-color:var(--pxo-dim)!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] '
-  + 'input:not([type="range"]):not([type="checkbox"]):not([type="radio"]){'
-  + 'background:var(--pxo-bg3)!important;color:var(--pxo-ink)!important;'
-  + '-webkit-text-fill-color:var(--pxo-ink)!important;caret-color:var(--pxo-neon)!important;}'
-  + 'body:has(.pxo-root[data-mode="desk"]) [data-slot="conversation"] input::placeholder{'
-  + 'color:var(--pxo-dim)!important;-webkit-text-fill-color:var(--pxo-dim)!important;}'
+const COMPOSER = `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} textarea{`
+	  + 'background:transparent!important;color:transparent!important;'
+	  + '-webkit-text-fill-color:transparent!important;caret-color:var(--pxo-neon)!important;}'
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} textarea::placeholder{`
+	  + 'color:var(--pxo-dim)!important;-webkit-text-fill-color:var(--pxo-dim)!important;}'
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} `
+	  + 'input:not([type="range"]):not([type="checkbox"]):not([type="radio"]){'
+	  + 'background:var(--pxo-bg3)!important;color:var(--pxo-ink)!important;'
+	  + '-webkit-text-fill-color:var(--pxo-ink)!important;caret-color:var(--pxo-neon)!important;}'
+	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} input::placeholder{`
+	  + 'color:var(--pxo-dim)!important;-webkit-text-fill-color:var(--pxo-dim)!important;}'
 
 /* ----------------------------------------------------------------------------
  * Cross-cutting visual reset.

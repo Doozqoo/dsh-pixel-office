@@ -5,12 +5,19 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY, formatRelative, hashIndex, swapCells } from './placement.ts'
+import {
+  ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY,
+  DRAG_THRESHOLD, MAX_NOTE_W, MIN_NOTE_W, CELL_GAP,
+  PREVIEW_CARD_W, PREVIEW_SHOW_DELAY_MS, PREVIEW_HIDE_DELAY_MS, REVEAL_CLEANUP_MS,
+} from './constants.ts'
+import { formatRelative, hashIndex, swapCells } from './placement.ts'
 import type { Placement } from './placement.ts'
-import { DRAG_THRESHOLD, hitIndex } from './store.ts'
+import { hitIndex } from './store.ts'
 import type { SceneState, Store } from './store.ts'
 import type { SessionFaceMirror } from './contracts.ts'
 import { useHostVersion } from './version.ts'
+import { SELECTORS } from './adapters/dom.ts'
+import { STR } from './strings.ts'
 
 /** One session as the views consume it. */
 export interface NoteRecord {
@@ -93,53 +100,53 @@ export function PixelOfficeSettings(props: {
   return (
     <div className="pxo-settings">
       <div className="pxo-settings-hero">
-        <span className="pxo-settings-kicker">THEME MODULE</span>
-        <h2>PIXEL OFFICE</h2>
-        <p>像素办公主题 · 将工作区重绘为霓虹控制台。</p>
+        <span className="pxo-settings-kicker">{STR.SETTINGS_THEME}</span>
+        <h2>{STR.SETTINGS_TITLE}</h2>
+        <p>{STR.SETTINGS_DESC}</p>
         <PoweredBy className="pxo-settings-ver" version={baseVersion} />
       </div>
 
       <div className="pxo-set-master">
-        <div className="pxo-set-row"><span>启用像素办公 / ENABLE SKIN</span></div>
+        <div className="pxo-set-row"><span>{STR.SETTINGS_ENABLE}</span></div>
         <button
           type="button"
           className="pxo-toggle"
           aria-pressed={scene.enabled}
           onClick={() => { setEnabled(!scene.enabled) }}
         >
-          <span />{scene.enabled ? 'ON' : 'OFF'}
+          <span />{scene.enabled ? STR.SETTINGS_ON : STR.SETTINGS_OFF}
         </button>
-        <p className="pxo-note">关闭后恢复原生界面；可随时在此重新启用。</p>
+        <p className="pxo-note">{STR.SETTINGS_ENABLE_NOTE}</p>
       </div>
 
       <div className="pxo-set-card">
-        <div className="pxo-set-row"><span>动效强度 / INTENSITY</span></div>
+        <div className="pxo-set-row"><span>{STR.SETTINGS_INTENSITY}</span></div>
         <div className="pxo-segment" role="group" aria-label="动效强度">
           <button
             type="button"
             aria-pressed={scene.intensity === 'calm'}
             onClick={() => { setIntensity('calm') }}
-          >CALM · 静默</button>
+          >{STR.SETTINGS_CALM}</button>
           <button
             type="button"
             aria-pressed={scene.intensity === 'overdrive'}
             onClick={() => { setIntensity('overdrive') }}
-          >OVERDRIVE · 过载</button>
+          >{STR.SETTINGS_OVERDRIVE}</button>
         </div>
-        <p className="pxo-note">静默模式保留配色，仅停止环境动效。</p>
+        <p className="pxo-note">{STR.SETTINGS_INTENSITY_NOTE}</p>
       </div>
 
       <div className="pxo-set-card">
-        <div className="pxo-set-row"><span>网格地平线 / GRID FLOOR</span></div>
+        <div className="pxo-set-row"><span>{STR.SETTINGS_GRID}</span></div>
         <button
           type="button"
           className="pxo-toggle"
           aria-pressed={scene.grid}
           onClick={() => { setGrid(!scene.grid) }}
         >
-          <span />{scene.grid ? 'SHOWN' : 'HIDDEN'}
+          <span />{scene.grid ? STR.SETTINGS_SHOWN : STR.SETTINGS_HIDDEN}
         </button>
-        <p className="pxo-note">切换俯视网格与透视地板。</p>
+        <p className="pxo-note">{STR.SETTINGS_GRID_NOTE}</p>
       </div>
     </div>
   )
@@ -149,25 +156,6 @@ export function PixelOfficeSettings(props: {
 const SLOTS: Registry = {}
 /** Pointer-targets populated by the desk-grid drag handlers. */
 const DESK_REGISTRY: Registry = {}
-
-/**
- * Widest a sticky note is allowed to be, in CSS pixels.
- *
- * The note never exceeds this, no matter how much room a cell has: past it a
- * sticker stops reading as paper. Surplus cell space becomes margin around the
- * note instead.
- */
-const MAX_NOTE_W = 156
-
-/**
- * Narrowest a matrix cell may become before the grid drops a column.
- *
- * Letting a cell shrink this far buys another column on viewports where the
- * natural width would leave nearly a full column of dead space. The note
- * itself is capped at {@link MAX_NOTE_W} and centred, so a roomy cell shows
- * margin rather than a stretched sticker.
- */
-const MIN_NOTE_W = 126
 
 /**
  * Measure an element and report the grid that exactly fills it.
@@ -224,9 +212,6 @@ function useFittedGrid(ref: React.RefObject<HTMLElement | null>): {
   }, [box.width, box.height])
 }
 
-/** Gap between matrix cells, in CSS pixels; must match the `gap` in the stylesheet. */
-const CELL_GAP = 10
-
 /** A leading neon block used beside HUD section labels. */
 const NEON_BLOCK: CSSProperties = {
   width: 4, height: 22, background: 'var(--pxo-neon)',
@@ -269,8 +254,8 @@ function OfficeHeader(props: {
       <div className="pxo-logo">
         <div className="pxo-logo-square" />
         <div className="pxo-logo-text">
-          <div className="pxo-logo-main" data-text="NEON//NEXUS">NEON//NEXUS</div>
-          <div className="pxo-logo-sub">PX-77 · AUTONOMOUS WORKGRID</div>
+          <div className="pxo-logo-main" data-text={STR.LOGO_MAIN}>{STR.LOGO_MAIN}</div>
+          <div className="pxo-logo-sub">{STR.LOGO_SUB}</div>
         </div>
       </div>
       <div className="pxo-breadcrumb">
@@ -327,7 +312,7 @@ function SearchField(props: {
       <input
         type="search"
         value={props.value}
-        placeholder="搜索节点 / SEARCH..."
+        placeholder={STR.SEARCH_PLACEHOLDER}
         aria-label="搜索工作区"
         onChange={(event) => { props.onChange(event.target.value) }}
       />
@@ -457,10 +442,10 @@ function DeskTile(props: {
       ? 'run'
       : 'idle'
   const stateText = props.isEmpty
-    ? 'EMPTY · 空位'
+    ? STR.DESK_EMPTY
     : props.isOnline
-      ? 'ONLINE · LINK ACTIVE'
-      : 'IDLE · 待启动'
+      ? STR.DESK_ONLINE
+      : STR.DESK_IDLE
   const slug = String(props.index + 1).padStart(2, '0')
   return (
     <div
@@ -505,16 +490,16 @@ function DeskTile(props: {
                   <button
                     type="button"
                     className="pxo-ico"
-                    title="重命名工位"
-                    aria-label={`重命名工位 ${props.name}`}
+                    title={STR.RENAME_TITLE}
+                    aria-label={`${STR.RENAME_TITLE} ${props.name}`}
                     onPointerDown={(event) => { event.stopPropagation() }}
                     onClick={(event) => { event.stopPropagation(); props.onRename() }}
                   >✎</button>
                   <button
                     type="button"
                     className="pxo-ico"
-                    title="清空工位"
-                    aria-label={`清空工位 ${props.name}`}
+                    title={STR.CLEAR_TITLE}
+                    aria-label={`${STR.CLEAR_TITLE} ${props.name}`}
                     onPointerDown={(event) => { event.stopPropagation() }}
                     onClick={(event) => { event.stopPropagation(); props.onClear() }}
                   >×</button>
@@ -553,11 +538,11 @@ function DeskTile(props: {
             <button
               type="button"
               className="pxo-empty-cta"
-              title="点击或拖拽项目到此创建"
+              title={STR.DESK_EMPTY_META}
               onClick={(e) => { e.stopPropagation(); props.onCreate(props.index) }}
             >
               <span className="plus">+</span>
-              <span className="label">新建工位 / NEW STATION</span>
+              <span className="label">{STR.NEW_STATION_LABEL}</span>
             </button>
           )
         : null}
@@ -663,7 +648,7 @@ export function TopView(props: {
     <div className="pxo-fill" data-mode="top">
       <Backdrop />
       <OfficeHeader
-        trail={['工作区', 'WORKSPACE']}
+        trail={[STR.TOP_TRAIL.split(' / ')[0]!, STR.TOP_TRAIL.split(' / ')[1]!]}
         right={
           <>
             <OnlinePill count={onlineCount} />
@@ -674,18 +659,18 @@ export function TopView(props: {
       />
       <div className="pxo-toolbar">
         <span style={NEON_BLOCK} />
-        <span className="pxo-toolbar-title">工作空间 / WORKSPACES</span>
-        <span className="pxo-toolbar-sub">· {DESKS} 工位 · {onlineCount} 在线</span>
+        <span className="pxo-toolbar-title">{STR.TOOLBAR_TITLE}</span>
+        <span className="pxo-toolbar-sub">{STR.TOOLBAR_SUB(DESKS, onlineCount)}</span>
         <div className="pxo-toolbar-right">
           <div className="pxo-sort" role="group" aria-label="工位排序">
-            <span className="pxo-sort-label">排序</span>
+            <span className="pxo-sort-label">{STR.SORT_LABEL}</span>
             <button
               type="button"
               className={scene.sortMode === 'manual' ? 'pxo-chip is-active' : 'pxo-chip'}
               aria-pressed={scene.sortMode === 'manual'}
               onClick={() => { applySort('manual') }}
             >
-              手动
+              {STR.SORT_MANUAL}
             </button>
             <button
               type="button"
@@ -693,7 +678,7 @@ export function TopView(props: {
               aria-pressed={scene.sortMode === 'activity'}
               onClick={() => { applySort('activity') }}
             >
-              活跃度
+              {STR.SORT_ACTIVITY}
             </button>
           </div>
           <button
@@ -702,7 +687,7 @@ export function TopView(props: {
             aria-pressed={filter === 'all'}
             onClick={() => { setFilter('all') }}
           >
-            <span className="dot" /> ALL · 全部
+            <span className="dot" /> {STR.FILTER_ALL}
           </button>
           <button
             type="button"
@@ -710,10 +695,10 @@ export function TopView(props: {
             aria-pressed={filter === 'online'}
             onClick={() => { setFilter('online') }}
           >
-            LIVE · 在线节点
+            {STR.FILTER_ONLINE}
           </button>
           <button type="button" className="pxo-btn-new" onClick={() => { props.onCreate() }}>
-            + 新建工位
+            {STR.NEW_STATION}
           </button>
         </div>
       </div>
@@ -734,14 +719,14 @@ export function TopView(props: {
           const name = desk?.title ?? '空 位'
           const idLabel = desk === undefined ? `空位 #${String(i + 1).padStart(2, '0')}` : `#${String(i + 1).padStart(2, '0')}`
           const meta = wsId === null
-            ? '[ 点击或拖拽项目到此创建 ]'
-            : isOnline ? '实时链路已连接 / LIVE LINK' : '节点待机 / NODE STANDBY'
+            ? STR.DESK_EMPTY_META
+            : isOnline ? STR.DESK_LIVE_LINK : STR.DESK_STANDBY
           // Count the notes the matrix actually pins, not every id the
           // workspace remembers: archived sessions and ids the session list
           // has not published are absent from the board.
           const countLabel = wsId === null
-            ? '0 便利贴'
-            : `${props.liveCounts[wsId] ?? 0} 便利贴`
+            ? STR.NOTES_COUNT(0)
+            : STR.NOTES_COUNT(props.liveCounts[wsId] ?? 0)
           return (
             <DeskTile
               key={i}
@@ -769,7 +754,7 @@ export function TopView(props: {
         })}
       </div>
       <div className="pxo-caption">
-        01 / <b>神经节点矩阵 — 6×4 WORKGRID</b>
+        {STR.CAPTION}
         <PoweredBy className="pxo-version" version={baseVersion} />
       </div>
       {null /* removed: <LinkLost /> — full-bleed NO CARRIER overlay dropped per feedback */}
@@ -818,7 +803,7 @@ function StickerPreview(props: {
   /** When true, the card plays its 100ms exit transition before unmount. */
   readonly closing: boolean
 }): ReactNode {
-  const CARD_W = 268
+  const CARD_W = PREVIEW_CARD_W
   // Anchor to the sticker's top-right; flip to the left near the right edge so
   // the card never runs off-screen. The card is position:fixed (anchored to the
   // viewport via the sticker's rect) and lives outside the board's overflow, so
@@ -829,8 +814,8 @@ function StickerPreview(props: {
   let top = props.rect.top
   if (top < 64) top = 64
   const status = props.running
-    ? <><span className="dot run" /> 运行中 · UPLINK ACTIVE</>
-    : <><span className="dot idle" /> 待机 · UPLINK IDLE</>
+    ? <><span className="dot run" /> {STR.PREVIEW_RUNNING}</>
+    : <><span className="dot idle" /> {STR.PREVIEW_IDLE}</>
   return (
     <div
       className={props.closing ? 'pxo-preview closing' : 'pxo-preview'}
@@ -841,10 +826,10 @@ function StickerPreview(props: {
     >
       <div className="pxo-preview-hd">
         <span className="pxo-preview-title">{props.title}</span>
-        <span className="pxo-preview-node">NODE {String(props.nodeIndex + 1).padStart(2, '0')}</span>
+        <span className="pxo-preview-node">{STR.PREVIEW_NODE(props.nodeIndex)}</span>
       </div>
       <div className="pxo-preview-status">{status}</div>
-      <div className="pxo-preview-time">最近活动 · {formatRelative(props.lastActivity, Date.now())}</div>
+      <div className="pxo-preview-time">{STR.PREVIEW_RECENT}{formatRelative(props.lastActivity, Date.now())}</div>
       <div className="pxo-preview-msg" aria-hidden="true">
         {props.last === undefined
           ? (
@@ -852,7 +837,7 @@ function StickerPreview(props: {
                 <span className="ln" />
                 <span className="ln" />
                 <span className="ln short" />
-                <span className="ph">— 暂无消息记录 —</span>
+                <span className="ph">{STR.PREVIEW_NO_MESSAGES}</span>
               </>
             )
           : (
@@ -863,9 +848,9 @@ function StickerPreview(props: {
             )}
       </div>
       <div className="pxo-preview-actions">
-        <button type="button" className="pxo-btn-pv open" onClick={props.onOpen}>▶ 打开会话</button>
-        <button type="button" className="pxo-btn-pv" onClick={props.onEdit}>✎ 编辑</button>
-        <button type="button" className="pxo-btn-pv" onClick={props.onTear}>✂ 撕下</button>
+        <button type="button" className="pxo-btn-pv open" onClick={props.onOpen}>{STR.PREVIEW_OPEN}</button>
+        <button type="button" className="pxo-btn-pv" onClick={props.onEdit}>{STR.PREVIEW_EDIT}</button>
+        <button type="button" className="pxo-btn-pv" onClick={props.onTear}>{STR.PREVIEW_TEAR}</button>
       </div>
     </div>
   )
@@ -921,13 +906,13 @@ function Sticker(props: {
       <span className="tape" style={{ background: props.note?.running === true ? 'var(--pxo-neon)' : 'var(--pxo-magenta)' }} />
       <span className="tag">
         {props.note?.running === true
-          ? `● ACTIVE · #${String(props.index + 1).padStart(2, '0')}`
-          : `SESSION #${String(props.index + 1).padStart(2, '0')}`}
+          ? STR.STICKER_ACTIVE(props.index)
+          : STR.STICKER_SESSION(props.index)}
       </span>
       <span className="title">{props.label}</span>
       <span className="meta">
-        <span>{props.note?.running === true ? 'UPLINK ACTIVE' : 'UPLINK IDLE'}</span>
-        <span>{`NODE ${String(props.index + 1).padStart(2, '0')}`}</span>
+        <span>{props.note?.running === true ? STR.STICKER_UPLINK_ACTIVE : STR.STICKER_UPLINK_IDLE}</span>
+        <span>{STR.STICKER_NODE(props.index)}</span>
       </span>
       <span className="curl" style={{ animationDelay: phase }} />
     </div>
@@ -1001,22 +986,22 @@ function NewStickyStack(props: {
                 background: note.color,
               }}
             >
-              {i === 0 ? '空白便利贴' : ''}
+              {i === 0 ? STR.STACK_BLANK : ''}
             </div>
           )
         })}
       </div>
       <div className="pxo-stack-info">
-        <div><b>新便利贴堆 / NEW STICKIES</b></div>
-        <div className="pxo-stack-hint">// 拖拽到计划板空位以创建新会话</div>
-        <div className="pxo-stack-hint">// 在空位松开后弹窗输入会话标题</div>
-        <div className="pxo-stack-hint">// 拖出计划板 = 撕下便利贴（归档）</div>
-        <div className="pxo-stack-hint">// 撕下后再拖回 = 重新贴上（恢复）</div>
-        <div className="pxo-stack-hint">// 同一位置重叠 = 重新编辑内容</div>
+        <div><b>{STR.STACK_TITLE}</b></div>
+        <div className="pxo-stack-hint">{STR.STACK_HINT_DRAG}</div>
+        <div className="pxo-stack-hint">{STR.STACK_HINT_INPUT}</div>
+        <div className="pxo-stack-hint">{STR.STACK_HINT_TEAR}</div>
+        <div className="pxo-stack-hint">{STR.STACK_HINT_RESTORE}</div>
+        <div className="pxo-stack-hint">{STR.STACK_HINT_OVERLAP}</div>
       </div>
       <div>
-        <div className="pxo-stack-arrow">→ DRAG →</div>
-        <div className="pxo-stack-hint" style={{ marginTop: 4 }}>拖到计划板</div>
+        <div className="pxo-stack-arrow">{STR.STACK_ARROW}</div>
+        <div className="pxo-stack-hint" style={{ marginTop: 4 }}>{STR.STACK_DRAG_TO}</div>
       </div>
     </div>
   )
@@ -1060,7 +1045,7 @@ export function DeskView(props: {
     previewShow.current = window.setTimeout(() => {
       setPreviewClosing(false)
       setPreview({ sid, rect: el.getBoundingClientRect() })
-    }, 150)
+    }, PREVIEW_SHOW_DELAY_MS)
   }
   const cancelPreview = (): void => {
     if (previewShow.current !== null) { window.clearTimeout(previewShow.current); previewShow.current = null }
@@ -1069,7 +1054,7 @@ export function DeskView(props: {
     previewHide.current = window.setTimeout(() => {
       setPreview(null)
       setPreviewClosing(false)
-    }, 100)
+    }, PREVIEW_HIDE_DELAY_MS)
   }
   const keepPreview = (): void => {
     if (previewHide.current !== null) { window.clearTimeout(previewHide.current); previewHide.current = null }
@@ -1100,7 +1085,7 @@ export function DeskView(props: {
     if (scene.intensity === 'calm') return
     // The conversation is host-portaled, so it is NOT inside .pxo-root — locate
     // it globally. The desk-mode gate above keeps this from firing in top view.
-    const slot = document.querySelector('[data-slot="conversation"]')
+    const slot = document.querySelector(SELECTORS.CONVERSATION)
     if (slot == null) return
     const r: DOMRect = slot.getBoundingClientRect()
     if (r.width <= 0 || r.height <= 0) return
@@ -1124,7 +1109,7 @@ export function DeskView(props: {
       frag.appendChild(cell)
     }
     host.appendChild(frag)
-    const t = window.setTimeout(() => host.remove(), 2000)
+    const t = window.setTimeout(() => host.remove(), REVEAL_CLEANUP_MS)
     return () => { window.clearTimeout(t); host.remove() }
   }, [scene.mode, scene.opened, scene.intensity])
   const order = scene.order[desk.id] ?? []
@@ -1190,10 +1175,10 @@ export function DeskView(props: {
         right={
           <>
             <button type="button" className="pxo-btn-leave" onClick={props.onBack}>
-              ← 离开工位
+              {STR.LEAVE_DESK}
             </button>
             <span className={runningCount > 0 ? 'pxo-status-pill' : 'pxo-status-pill is-idle'}>
-              <span className="dot" /> {runningCount > 0 ? `${runningCount} 条链路在线` : '节点待机'}
+              <span className="dot" /> {runningCount > 0 ? STR.NODES_ONLINE(runningCount) : STR.NODE_STANDBY}
             </span>
             <SettingsButton onClick={props.onSettings} />
           </>
@@ -1213,9 +1198,9 @@ export function DeskView(props: {
           so the two can never be on screen together. */}
       <div className="pxo-standby" aria-hidden="true">
         <div className="pxo-standby-in">
-          <span className="ttl">NO SIGNAL</span>
+          <span className="ttl">{STR.NO_SIGNAL}</span>
           <span className="sub">
-            {used === 0 ? '此工位暂无便利贴' : '选择一张便利贴以接入会话'}
+            {used === 0 ? STR.NO_SIGNAL_EMPTY : STR.NO_SIGNAL_PICK}
           </span>
           <span className="cursor" />
         </div>
@@ -1223,8 +1208,8 @@ export function DeskView(props: {
 
       <div className="pxo-board">
         <div className="pxo-board-hd">
-          <span>任务矩阵 / MISSION MATRIX</span>
-          <span className="trail">{used} / {limit - 1} 节点 · 保留 1 个交换槽</span>
+          <span>{STR.MATRIX_TITLE}</span>
+          <span className="trail">{STR.MATRIX_STATS(used, limit)}</span>
         </div>
         {/* Both axes are `1fr`: the hook already chose counts that divide the
             measured box evenly, so the tracks consume every pixel and the grid
@@ -1327,9 +1312,9 @@ export function DragGhost({
   if (drag === null || !drag.moved) return null
   const isDesk = drag.kind === 'desk'
   const label = drag.kind === 'desk'
-    ? '搬迁中…'
+    ? STR.DRAG_MOVING
     : drag.kind === 'stack'
-      ? '新便利贴'
+      ? STR.NEW_STICKY
       : scene.labels[drag.sid] ?? notes[drag.sid]?.title ?? ''
   return (
     <div
@@ -1398,7 +1383,7 @@ function Modal(props: ModalProps): ReactNode {
         {props.children}
         <div className="pxo-row">
           <button type="button" className="pxo-btn" onClick={onCancel}>
-            {props.cancelText ?? '取消'}
+            {props.cancelText ?? STR.DIALOG_CANCEL}
           </button>
           {props.onOk === undefined
             ? null
@@ -1408,7 +1393,7 @@ function Modal(props: ModalProps): ReactNode {
                   className={props.danger === true ? 'pxo-btn danger' : 'pxo-btn'}
                   onClick={props.onOk}
                 >
-                  {props.okText ?? '确定'}
+                  {props.okText ?? STR.DIALOG_CONFIRM}
                 </button>
               )}
         </div>
@@ -1437,7 +1422,7 @@ function InputModal(props: {
       anchor={props.anchor ?? 'board'}
       onCancel={props.onCancel}
       onOk={submit}
-      okText={props.okText ?? '贴上'}
+      okText={props.okText ?? STR.DIALOG_PASTE}
       {...(props.closeOnOutsideClick === true ? { closeOnOutsideClick: true } : {})}
     >
       <input
@@ -1445,7 +1430,7 @@ function InputModal(props: {
         value={text}
         autoFocus
         aria-label={props.title}
-        placeholder="输入便利贴展示内容…"
+        placeholder={STR.DIALOG_INPUT_PLACEHOLDER}
         onChange={(e) => { setText(e.target.value) }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') submit()
@@ -1475,8 +1460,8 @@ export function Dialogs(props: {
     case 'new':
       return (
         <InputModal
-          title="✎ 新便利贴"
-          desc="填写这张便利贴的展示内容，确认后在当前工作区创建一个新会话。"
+          title={STR.DIALOG_NEW_TITLE}
+          desc={STR.DIALOG_NEW_DESC}
           closeOnOutsideClick
           onCancel={close}
           onOk={(text) => { props.onAdd(modal.pos, text) }}
@@ -1485,10 +1470,10 @@ export function Dialogs(props: {
     case 'edit':
       return (
         <InputModal
-          title="✎ 重新编辑"
-          desc="便利贴重叠视为重新编辑：仅修改展示内容，不影响会话本身。"
+          title={STR.DIALOG_EDIT_TITLE}
+          desc={STR.DIALOG_EDIT_DESC}
           initial={scene.labels[modal.sid] ?? notes[modal.sid]?.title ?? ''}
-          okText="保存"
+          okText={STR.DIALOG_SAVE}
           onCancel={close}
           onOk={(text) => {
             store.set({ labels: { ...scene.labels, [modal.sid]: text }, modal: null })
@@ -1498,21 +1483,21 @@ export function Dialogs(props: {
     case 'full':
       return (
         <Modal
-          title="⚠ 计划板已满"
-          desc="已达当前可用上限（始终保留一个空位用于挪动）。可在设置中提高上限，或先撕下一张便利贴。"
+          title={STR.DIALOG_FULL_TITLE}
+          desc={STR.DIALOG_FULL_DESC}
           anchor="board"
-          cancelText="知道了"
+          cancelText={STR.DIALOG_GOT_IT}
           onCancel={close}
         />
       )
     case 'tear':
       return (
         <Modal
-          title="✂ 撕下便利贴？"
-          desc="撕下将归档该会话，便利贴从计划板移除（会话记录保留）；选择重新贴上则放回原位。"
+          title={STR.DIALOG_TEAR_TITLE}
+          desc={STR.DIALOG_TEAR_DESC}
           anchor="board"
-          cancelText="重新贴上"
-          okText="撕下"
+          cancelText={STR.DIALOG_RESTORE}
+          okText={STR.DIALOG_TEAR_ACTION}
           danger
           onCancel={close}
           onOk={() => { close(); props.onTear(modal.sid) }}
@@ -1521,10 +1506,10 @@ export function Dialogs(props: {
     case 'clear':
       return (
         <Modal
-          title="⌫ 清空工位？"
-          desc={`将删除工作区「${modal.title}」，该工位恢复为空座椅。其下的会话会一并归档，不再显示（会话日志本身保留）。`}
-          cancelText="保留"
-          okText="清空"
+          title={STR.DIALOG_CLEAR_TITLE}
+          desc={STR.DIALOG_CLEAR_DESC(modal.title)}
+          cancelText={STR.DIALOG_KEEP}
+          okText={STR.DIALOG_CLEAR_ACTION}
           danger
           onCancel={close}
           onOk={() => { close(); props.onClear(modal.wsId) }}
@@ -1533,10 +1518,10 @@ export function Dialogs(props: {
     case 'rename':
       return (
         <InputModal
-          title="✎ 重命名工位"
-          desc="为这台工作站重新命名，仅更改显示标题，不影响其会话记录。"
+          title={STR.DIALOG_RENAME_TITLE}
+          desc={STR.DIALOG_RENAME_DESC}
           initial={modal.title}
-          okText="重命名"
+          okText={STR.DIALOG_RENAME_ACTION}
           closeOnOutsideClick
           onCancel={close}
           onOk={(text) => { close(); props.onRename(modal.wsId, text) }}

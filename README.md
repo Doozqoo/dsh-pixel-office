@@ -64,6 +64,39 @@ dsh plugin --profile web add <本仓库绝对路径>
 | **版本标识** | 顶视图底部状态条右端与设置页 hero 显示 `POWERED BY DSH <基座版本号>`（如 `0.1.2-alpha.1-cd5ef81-dirty`）。显示的是**宿主基座**的版本，不是本插件的——基座只在侧边栏品牌区把这串文本渲染出来（由 `process.env.DSH_CLIENT_VERSION/COMMIT_HASH/GIT_DIRTY` 构建期内联），没有 cordis 服务、没有 `window` 全局、也没有 meta 标签，因此插件从 `[data-slot="sidebar"]` 里读。读不到时只显示 `POWERED BY DSH`，绝不猜一个版本号 |
 | **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——基座的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
 
+## 工程架构
+
+为应对基座 DeepSeek Harness 的持续更新（含破坏性变更），插件在 v2 中引入三层隔离：
+
+### 服务适配层 (`adapters/`)
+
+所有对基座服务（`slots`、`theme`、`workspaces`、`uiWorkspace`、`sessions`）的调用全部封装在适配器中。插件其余部分（`index.tsx`、`views.tsx`）不直接接触基座 API，而是通过适配器接口操作。
+
+**基座 API 变更时，只需修改对应适配器，插件主体无需改动。**
+
+| 适配器 | 封装的服务 | 核心职责 |
+|---|---|---|
+| `workspace.ts` | `workspaces` + `uiWorkspace` | 工作区创建、删除、重命名、目录选择、会话归档 |
+| `session.ts` | `sessions` | 会话打开、创建 |
+| `theme.ts` | `theme` | 主题 token 覆盖 |
+| `slots.ts` | `slots` | 插槽注册与注入 |
+| `events.ts` | `ctx.on` / `ctx.effect` | 事件订阅（`connection/reset`、`theme/change`） |
+| `dom.ts` | — | 基座 DOM 选择器集中管理（`data-slot` 属性变更时只改此处） |
+
+### 能力探测 (`probeAdapters`)
+
+插件启动时对所有适配器执行能力探测。硬依赖（`slots`）失败则阻止挂载；软依赖（`theme`、`session` 绑定）缺失则报告警告但继续运行。
+
+### 版本兼容矩阵 (`compat.ts`)
+
+从侧边栏品牌区读取基座版本号，解析并与已知兼容范围比较。不兼容的基座版本会打印明确错误，兼容但有已知差异的版本会打印警告。
+
+### 代码规范化
+
+- **`constants.ts`** — 所有魔法数字、布局尺寸、时间延迟集中管理
+- **`strings.ts`** — 所有用户可见文案集中管理（中英双语），便于未来 i18n
+- 类型定义集中在各模块顶部，避免散落
+
 ## 安装
 
 Pixel Office 是标准的 DSH Profile Bundle。安装的本质是把一个声明了 `dsh.bundle.patch` 的包加为某个 dsh profile 的依赖，dsh 会把它激活进 `dsh.profile.bundles` 层序。命令背地里就是 `pnpm add`，跑在当前 profile 目录里。
@@ -176,18 +209,30 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-client-pixel-office
 ## 目录结构
 
 ```
-src/index.ts            node 半边（占位 apply；Loader 需要一个可导入行）
-src/client/index.tsx    浏览器入口：服务读取、slot 注册、生命周期
-src/client/views.tsx    俯视图、桌面正视图、弹窗、设置面板
-src/client/styles.ts    样式表文本 + 注入 effect
-src/client/tokens.ts    亮 / 暗两套调色板
-src/client/placement.ts 摆放与呈现逻辑（无 React、无 DOM）
-src/client/store.ts     场景状态与指针拖拽
-src/client/persist.ts   摆放持久化（localStorage 读写与校验）
-src/client/contracts.ts 所需 DSH 表面的结构化类型
-src/client/version.ts   从侧边栏品牌区读取宿主基座版本号
-assets/                 README 截图（top-view / desk-view / settings）
-tsdown.config.ts        产物构建配置
+src/index.ts               node 半边（占位 apply；Loader 需要一个可导入行）
+src/client/index.tsx       浏览器入口：服务读取、slot 注册、生命周期
+src/client/views.tsx       俯视图、桌面正视图、弹窗、设置面板
+src/client/styles.ts       样式表文本 + 注入 effect
+src/client/tokens.ts       亮 / 暗两套调色板
+src/client/placement.ts    摆放与呈现逻辑（无 React、无 DOM）
+src/client/store.ts        场景状态与指针拖拽
+src/client/persist.ts      摆放持久化（localStorage 读写与校验）
+src/client/contracts.ts    所需 DSH 表面的结构化类型
+src/client/version.ts      从侧边栏品牌区读取宿主基座版本号
+src/client/constants.ts    集中常量：布局尺寸、颜色、时间延迟
+src/client/strings.ts      集中 UI 文案（中英双语，便于未来 i18n）
+src/client/compat.ts       版本兼容矩阵：解析基座版本、评估兼容性
+src/client/adapters/       服务适配层：隔离所有基座 API 调用
+  ├── index.ts             适配器入口：创建、导出、能力探测
+  ├── types.ts             适配器依赖与探测结果类型
+  ├── workspace.ts         封装 workspaces + uiWorkspace 服务
+  ├── session.ts           封装 sessions 服务
+  ├── theme.ts             封装 theme 服务（token 覆盖）
+  ├── slots.ts             封装 slots 服务（插槽注册与注入）
+  ├── events.ts            封装事件订阅（统一事件名称）
+  └── dom.ts               封装 DOM 查询（统一选择器）
+assets/                    README 截图（top-view / desk-view / settings）
+tsdown.config.ts           产物构建配置
 ```
 
 `placement.ts` 故意不含 React 与 DOM，是唯一能脱离浏览器直接测的部分。`contracts.ts` 在本地声明所需类型而不是从 `@deepseek-ai/*` 导入——独立仓库要在没有那些包的环境里也能 install 和 typecheck。这些是结构性镜像而非上游 API 分叉，若与运行中 harness 不一致，以 harness 为准。
