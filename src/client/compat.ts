@@ -55,7 +55,51 @@ export function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
   // Pre-release versions sort before the release: '' > any pre-release.
   if (a.preRelease === '' && b.preRelease !== '') return 1
   if (a.preRelease !== '' && b.preRelease === '') return -1
-  return a.preRelease.localeCompare(b.preRelease)
+  return comparePreRelease(a.preRelease, b.preRelease)
+}
+
+/**
+ * The leading pre-release identifier of a build-stamped version tail.
+ *
+ * The harness stamps `0.1.6-alpha.2-cd5ef81-dirty`: semver, then the
+ * pre-release, then a dash-separated commit hash and dirty marker. Only the
+ * first dash-delimited segment is part of the version — the rest is build
+ * metadata. Comparing the raw tail against a milestone's bare `alpha.2` made
+ * every real host look *newer* than the newest known version (a longer string
+ * with an equal prefix sorts after it), so the plugin warned "以兼容模式运行"
+ * on exactly the version it was verified against.
+ * @param preRelease - the parsed pre-release tail, possibly with build metadata.
+ * @returns the comparable pre-release identifier.
+ */
+function leadingPreRelease(preRelease: string): string {
+  return preRelease.split('-')[0] ?? ''
+}
+
+/**
+ * Compare two pre-release identifiers segment by segment, numerically where
+ * both segments are numeric.
+ *
+ * Plain `localeCompare` puts `alpha.10` before `alpha.9`, which would misrank
+ * a tenth alpha as older than the ninth.
+ * @returns negative if a < b, 0 if equal, positive if a > b.
+ */
+function comparePreRelease(a: string, b: string): number {
+  const left = leadingPreRelease(a).split('.')
+  const right = leadingPreRelease(b).split('.')
+  const length = Math.max(left.length, right.length)
+  for (let i = 0; i < length; i += 1) {
+    const l = left[i]
+    const r = right[i]
+    // A shorter identifier is the lower one: `alpha` < `alpha.1`.
+    if (l === undefined) return -1
+    if (r === undefined) return 1
+    const ln = Number(l)
+    const rn = Number(r)
+    const numeric = l !== '' && r !== '' && Number.isFinite(ln) && Number.isFinite(rn)
+    const diff = numeric ? ln - rn : l.localeCompare(r)
+    if (diff !== 0) return diff > 0 ? 1 : -1
+  }
+  return 0
 }
 
 /**
@@ -75,10 +119,20 @@ export interface VersionNotes {
  * Known harness version milestones.
  *
  * These are the versions where the harness changed something the plugin
- * cares about. Add new entries at the top when a breaking change is
- * discovered.
+ * cares about. Entries are ordered **newest first**: index 0 is the newest
+ * version this plugin has been verified against, and the last entry is the
+ * oldest it still supports. Add new entries at the top when a breaking change
+ * is discovered or a version is verified.
  */
 export const VERSION_MILESTONES: readonly VersionNotes[] = [
+  {
+    since: { major: 0, minor: 1, patch: 6, preRelease: 'alpha.2', raw: '0.1.6-alpha.2' },
+    summary:
+      'sessions.open/openSubagent/clear removed — navigation moved to uiWorkspace.openSession; '
+      + 'uiWorkspace grew openSession/openWorkspace/forkSession/unarchiveSession; '
+      + 'the details slot was replaced by the dockable rightbar; session summaries gained '
+      + 'updatedAt/blank/origin plus subagentsByParent and jobsBySession',
+  },
   {
     since: { major: 0, minor: 1, patch: 2, preRelease: 'alpha.1', raw: '0.1.2-alpha.1' },
     summary: 'uiWorkspace service introduced; connectWorkspace/pickDirectory/archiveSession moved from workspaces',

@@ -22,6 +22,7 @@ import { loadScene, persistScene, pruneScene } from './persist.ts'
 import {
   DESKS, UNGROUPED_KEY,
   LINK_LOST_TOAST_MS, NOTICE_TOAST_MS, ENTER_TRANSITION_MS, LEAVE_TRANSITION_MS,
+  OPEN_GRACE_MS,
 } from './constants.ts'
 import { STR } from './strings.ts'
 import { fitInto, sameGrid } from './placement.ts'
@@ -176,6 +177,7 @@ export function apply(ctx: ClientContext): void {
       id: w.workspaceId,
       title: w.title,
       sessionIds: [...w.sessionIds],
+      ...(w.path === undefined ? {} : { path: w.path }),
     }))) as readonly DeskRecord[]
 
     const archived = props.useWorkspaces(state => state.archivedSessionIds.join(','))
@@ -197,20 +199,72 @@ export function apply(ctx: ClientContext): void {
       const record = state.byId[id]
       return record === undefined
         ? null
-        : [id, { title: record.displayTitle, running: record.running }] as const
+        : [id, {
+            title: record.displayTitle,
+            running: record.running,
+            ...(record.updatedAt === undefined ? {} : { updatedAt: record.updatedAt }),
+            ...(record.blank === undefined ? {} : { blank: record.blank }),
+            ...(record.origin === undefined ? {} : { origin: record.origin }),
+          }] as const
     }))
     const notes: Record<string, NoteRecord> = {}
     for (const entry of noteEntries) if (entry !== null) notes[entry[0]] = entry[1]
 
+    /**
+     * Direct subagent children per parent session.
+     *
+     * The harness grew a durable parent/child catalog in this span: a session
+     * can own continuable child chats, surfaced in the host as a lineage strip
+     * plus a side chat. The board shows the count so a busy parent is visible
+     * without opening it; `openSession` accepts the child's address, so the
+     * count is also the way in.
+     */
+    const subagents = props.useSessions((state) => {
+      const out: Record<string, number> = {}
+      for (const [parentId, catalog] of Object.entries(state.subagentsByParent ?? {})) {
+        const children = (catalog?.entries ?? []).filter(e => e.kind === 'child').length
+        if (children > 0) out[parentId] = children
+      }
+      return out
+    })
+
+    /** Background jobs per session (the host's own `jobsBySession` projection). */
+    const jobs = props.useSessions((state) => {
+      const out: Record<string, number> = {}
+      for (const [sid, list] of Object.entries(state.jobsBySession ?? {})) {
+        if (list !== undefined && list.length > 0) out[sid] = list.length
+      }
+      return out
+    })
+
     const running: Record<string, boolean> = {}
     const liveCounts: Record<string, number> = {}
+    const subCounts: Record<string, number> = {}
+    const recency: Record<string, number> = {}
+    const archivedByDesk: Record<string, readonly string[]> = {}
     for (const desk of stationList) {
       const live = desk.sessionIds.filter(
         id => notes[id] !== undefined && !archivedIds.includes(id),
       )
       liveCounts[desk.id] = live.length
       running[desk.id] = live.some(id => notes[id]?.running === true)
+      subCounts[desk.id] = live.reduce((sum, id) => sum + (subagents[id] ?? 0), 0)
+      recency[desk.id] = live.reduce(
+        (max, id) => Math.max(max, notes[id]?.updatedAt ?? 0), 0,
+      )
+      // Newest torn-off note first: the drawer is a "what did I just put away"
+      // surface, so host order (which is registry order) is the wrong sort.
+      archivedByDesk[desk.id] = desk.sessionIds
+        .filter(id => archivedIds.includes(id))
+        .sort((a, b) => (notes[b]?.updatedAt ?? 0) - (notes[a]?.updatedAt ?? 0))
     }
+    // Archived sessions no workspace accounts for belong to the 未分组 desk:
+    // that station is the host's own home for "not in any workspace", and an
+    // archived session whose workspace was deleted has to land somewhere or it
+    // could never be restored.
+    archivedByDesk[UNGROUPED_KEY] = archivedIds
+      .filter(id => !realSessionIds.includes(id))
+      .sort((a, b) => (notes[b]?.updatedAt ?? 0) - (notes[a]?.updatedAt ?? 0))
 
     const deskIdKey = stationList.map(d => d.id).join(',')
     useEffect(() => {
@@ -297,22 +351,81 @@ export function apply(ctx: ClientContext): void {
     }
 
     const openSession = (sessionId: string) => {
+      if (!adapters.session.canNavigate) {
+        store.set({ notice: STR.NOTICE_NAV_OFFLINE })
+        return
+      }
       adapters.session.open(sessionId)
       store.set({
         opened: sessionId,
+        // Bridge the host round-trip between "we asked for this session" and
+        // "the workspace list agrees it is on this desk". See OPEN_GRACE_MS.
+        openedGrace: Date.now() + OPEN_GRACE_MS,
         activity: { ...store.get().activity, [sessionId]: Date.now() },
       })
     }
 
+    /**
+     * Stick a torn-off note back on the board.
+     *
+     * This is the other half of the tear gesture, and it only became possible
+     * once `uiWorkspace.unarchiveSession` / `workspaces.unarchiveSession`
+     * shipped: the host restores the session to its *recorded* workspace
+     * position, so the plugin does not have to guess a cell — the reconcile
+     * pass picks the restored id up and `fitInto` places it in the lowest free
+     * slot on whichever desk it belonged to.
+     */
+    const restoreSession = async (sessionId: string) => {
+      if (!adapters.workspace.canUnarchive) {
+        store.set({ notice: STR.NOTICE_RESTORE_OFFLINE })
+        return
+      }
+      try {
+        await adapters.workspace.unarchiveSession(sessionId)
+        store.set({ notice: STR.NOTICE_RESTORED })
+      } catch (error) {
+        console.error(`${PLUGIN_ID}: session restore failed`, error)
+        store.set({ notice: STR.NOTICE_RESTORE_FAILED })
+      }
+    }
+
+    const forkSession = async (sessionId: string) => {
+      if (!adapters.session.canFork) {
+        store.set({ notice: STR.NOTICE_FORK_OFFLINE })
+        return
+      }
+      try {
+        store.set({ notice: STR.NOTICE_SPAWNING })
+        const childId = await adapters.session.fork(sessionId)
+        // `uiWorkspace.forkSession` already navigated; a bare `sessions.fork`
+        // returns the child id for the caller to place. Either way the monitor
+        // should follow the new link.
+        if (childId !== undefined) openSession(childId)
+        store.set({ notice: STR.NOTICE_FORKED })
+      } catch (error) {
+        console.error(`${PLUGIN_ID}: session fork failed`, error)
+        store.set({ notice: STR.NOTICE_FORK_FAILED })
+      }
+    }
+
     const enterDesk = (workspaceId: string) => {
-      store.set({ mode: 'desk', active: workspaceId, opened: null, transition: 'entering', notice: STR.NOTICE_ENTERED })
+      store.set({
+        mode: 'desk', active: workspaceId, opened: null,
+        transition: 'entering', notice: STR.NOTICE_ENTERED,
+        // The drawer belongs to the desk it was opened on; carrying it into the
+        // next one would show another workspace's archive before the user asked.
+        archiveOpen: false,
+      })
       later(() => {
         if (store.get().mode === 'desk') store.set({ transition: 'idle' })
       }, ENTER_TRANSITION_MS)
     }
 
     const leaveDesk = () => {
-      store.set({ mode: 'top', active: null, opened: null, modal: null, transition: 'entering', notice: null })
+      store.set({
+        mode: 'top', active: null, opened: null, modal: null,
+        transition: 'entering', notice: null, archiveOpen: false,
+      })
       later(() => {
         if (store.get().mode === 'top') store.set({ transition: 'idle' })
       }, LEAVE_TRANSITION_MS)
@@ -392,10 +505,15 @@ export function apply(ctx: ClientContext): void {
       && !archivedIds.includes(scene.opened)
 
     useEffect(() => {
-      if (scene.opened !== null && !openedLive && store.get().mode === 'desk') {
-        store.set({ opened: null })
-      }
-    }, [scene.opened, openedLive])
+      if (scene.opened === null || openedLive) return
+      if (store.get().mode !== 'desk') return
+      // A session created or forked a moment ago is not in the workspace list
+      // yet; sweeping it here would blank the monitor the user just lit. The
+      // grace is a deadline rather than a flag, so a session that never lands
+      // stops being exempt on its own.
+      if (Date.now() < scene.openedGrace) return
+      store.set({ opened: null })
+    }, [scene.opened, openedLive, scene.openedGrace])
 
     useEffect(() => {
       if (scene.notice === null) return
@@ -429,6 +547,8 @@ export function apply(ctx: ClientContext): void {
                 desks={stationList}
                 running={running}
                 liveCounts={liveCounts}
+                subCounts={subCounts}
+                recency={recency}
                 onCreate={(index) => { void createWorkspace(index) }}
                 onEnter={enterDesk}
                 onClear={clearWorkspace}
@@ -449,6 +569,13 @@ export function apply(ctx: ClientContext): void {
                   consumed={consumed}
                   isUngrouped={activeDesk?.id === UNGROUPED_KEY}
                   readLastMessage={readLastMessage}
+                  archived={archivedByDesk[activeDesk.id] ?? []}
+                  subagents={subagents}
+                  jobs={jobs}
+                  canRestore={adapters.workspace.canUnarchive}
+                  canFork={adapters.session.canFork}
+                  onRestore={(sessionId) => { void restoreSession(sessionId) }}
+                  onFork={(sessionId) => { void forkSession(sessionId) }}
                 />
               )}
         <DragGhost store={store} notes={notes} />
@@ -464,6 +591,7 @@ export function apply(ctx: ClientContext): void {
               console.error(`${PLUGIN_ID}: archive session failed`, error)
             })
           }}
+          onFork={(sessionId) => { void forkSession(sessionId) }}
           onClear={async (workspaceId) => {
             await adapters.workspace.delete(workspaceId)
           }}

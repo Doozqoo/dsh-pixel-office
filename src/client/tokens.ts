@@ -4,7 +4,11 @@
  * Both tables carry identical keys so {@link pairTokens} can zip them. Giving
  * light and dark the same value makes the Appearance preference inert: the
  * choice persists, both schemes resolve identically, and nothing on screen
- * changes. Every value therefore differs between the tables.
+ * changes. Every color value therefore differs between the tables.
+ *
+ * The exception is `--dsw-corner-shape`, which is deliberately identical (and
+ * deliberately non-numeric): it is a shape, not an ink, and the office has no
+ * curved geometry in either scheme.
  *
  * The trailing `--dsw-specific-pxo-*` entries are plugin-private carriers.
  * Theme override validation checks only that each value supplies `light` and
@@ -75,6 +79,18 @@ export const DARK_TOKENS: Readonly<Record<string, string>> = {
   '--dsw-static-deepseek-200': '#b8d4ff',
   '--dsw-static-deepseek-500': '#4dffd0',
   '--dsw-static-neutral-bluish-400': '#8fa3c4',
+  // ── Tokens the base added in this span (0.1.3 → 0.1.6). Left unset they
+  //    would fall back to the shipped palette inside the skinned conversation,
+  //    which is the one surface where the host's own components still paint.
+  '--dsw-alias-link': '#5ce0ff',
+  '--dsw-alias-bg-document-preview': '#060a16',
+  '--dsw-alias-label-document-preview': '#9fb4d6',
+  '--dsw-elevation-stroke-color': '#2b3a63',
+  // `corner-shape` is applied by the base under `@supports` via a universal
+  // selector, so a superellipse would round every surface the pixel skin only
+  // squares off with `border-radius:0`. `square` is the honest value here: the
+  // office has no curved geometry at all.
+  '--dsw-corner-shape': 'square',
   '--dsw-specific-pxo-scan': 'rgba(0,0,0,.26)',
   '--dsw-specific-pxo-bevel-dark': '#060a16',
   '--dsw-specific-pxo-bevel-light': '#354a7d',
@@ -154,6 +170,12 @@ export const LIGHT_TOKENS: Readonly<Record<string, string>> = {
   '--dsw-static-deepseek-200': '#2a3550',
   '--dsw-static-deepseek-500': '#0f8b6b',
   '--dsw-static-neutral-bluish-400': '#5c6270',
+  // Paper-print equivalents of the tokens the base added in this span.
+  '--dsw-alias-link': '#1c5f9e',
+  '--dsw-alias-bg-document-preview': '#efeadb',
+  '--dsw-alias-label-document-preview': '#4a4f5c',
+  '--dsw-elevation-stroke-color': '#b8b09a',
+  '--dsw-corner-shape': 'square',
   '--dsw-specific-pxo-scan': 'rgba(62,56,42,.10)',
   '--dsw-specific-pxo-bevel-dark': '#a8a08a',
   '--dsw-specific-pxo-bevel-light': '#fffdf5',

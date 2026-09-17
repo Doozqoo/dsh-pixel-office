@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  ACCENTS, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY,
+  ACCENTS, ARCHIVE_LIMIT, DESKS, NOTE_RATIO, STICKER_COLORS, UNGROUPED_KEY,
   DRAG_THRESHOLD, MAX_NOTE_W, MIN_NOTE_W, CELL_GAP,
   PREVIEW_CARD_W, PREVIEW_SHOW_DELAY_MS, PREVIEW_HIDE_DELAY_MS, REVEAL_CLEANUP_MS,
 } from './constants.ts'
@@ -19,10 +19,21 @@ import { useHostVersion } from './version.ts'
 import { SELECTORS } from './adapters/dom.ts'
 import { STR } from './strings.ts'
 
-/** One session as the views consume it. */
+/**
+ * One session as the views consume it.
+ *
+ * `updatedAt` is the host's own last-mutation instant, which is the reason the
+ * activity ranking now survives a reload; the plugin's local `activity` stamps
+ * (written when the user opens a note) remain as a tiebreaker for the moments
+ * between host refreshes. `blank` marks the reusable empty session
+ * `connectWorkspace` hands back, and `origin` marks a durable subagent child.
+ */
 export interface NoteRecord {
   readonly title: string
   readonly running: boolean
+  readonly updatedAt?: number
+  readonly blank?: boolean
+  readonly origin?: string
 }
 
 /** One workspace as the views consume it. */
@@ -30,6 +41,8 @@ export interface DeskRecord {
   readonly id: string
   readonly title: string
   readonly sessionIds: readonly string[]
+  /** Canonical host directory path, shown as the plate's tooltip. */
+  readonly path?: string
 }
 
 /** Cell index to element, populated by refs during render. */
@@ -165,10 +178,17 @@ const DESK_REGISTRY: Registry = {}
  * how many notes may exist, not how much space the board has. Both axes are
  * divided exactly, so the grid reaches all four edges.
  * @param ref - the element to measure.
+ * @param observed - whether the element is currently mounted. The board swaps
+ * this element out for the archive drawer, and a ref object's identity never
+ * changes, so without this key the observer would keep pointing at the removed
+ * node and stop reporting sizes once the drawer closed.
  * @returns column and row counts (both at least 1) and the width a note
  * should render at inside one cell.
  */
-function useFittedGrid(ref: React.RefObject<HTMLElement | null>): {
+function useFittedGrid(
+  ref: React.RefObject<HTMLElement | null>,
+  observed: boolean,
+): {
   columns: number
   rows: number
   noteW: number
@@ -186,7 +206,7 @@ function useFittedGrid(ref: React.RefObject<HTMLElement | null>): {
     })
     observer.observe(element)
     return () => { observer.disconnect() }
-  }, [ref])
+  }, [ref, observed])
   return useMemo(() => {
     if (box.width <= 0 || box.height <= 0) return { columns: 1, rows: 1, noteW: MAX_NOTE_W }
     // Cells may shrink toward MIN_NOTE_W to claim another column: sizing
@@ -210,12 +230,6 @@ function useFittedGrid(ref: React.RefObject<HTMLElement | null>): {
     const noteW = Math.min(colW, heightFor(rows) * NOTE_RATIO)
     return { columns, rows, noteW }
   }, [box.width, box.height])
-}
-
-/** A leading neon block used beside HUD section labels. */
-const NEON_BLOCK: CSSProperties = {
-  width: 4, height: 22, background: 'var(--pxo-neon)',
-  boxShadow: '0 0 6px var(--pxo-glow)',
 }
 
 /**
@@ -426,6 +440,10 @@ function DeskTile(props: {
   readonly isOnline: boolean
   readonly dragging: boolean
   readonly hoverOver: boolean
+  /** Direct subagent children across this desk's sessions; 0 hides the badge. */
+  readonly subagents: number
+  /** Canonical directory path, surfaced as the plate's tooltip. */
+  readonly path: string | undefined
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void
@@ -472,7 +490,7 @@ function DeskTile(props: {
         else props.onEnter()
       }}
     >
-      <div className={props.isEmpty ? 'pxo-plate empty' : 'pxo-plate'}>
+      <div className={props.isEmpty ? 'pxo-plate empty' : 'pxo-plate'} title={props.path}>
         <b>{props.name}</b>
         <span className="id">#{slug}</span>
       </div>
@@ -529,6 +547,14 @@ function DeskTile(props: {
         : (
             <div className="pxo-meta">
               <span>{props.meta}</span>
+              {props.subagents > 0
+                ? (
+                    <span
+                      className="subs"
+                      title={STR.PREVIEW_SUBLINKS(props.subagents)}
+                    >⇄{props.subagents}</span>
+                  )
+                : null}
               <span className="count">{props.countLabel}</span>
             </div>
           )}
@@ -557,6 +583,15 @@ export function TopView(props: {
   readonly running: Readonly<Record<string, boolean>>
   /** Unarchived, published note count per workspace id — what the matrix pins. */
   readonly liveCounts: Readonly<Record<string, number>>
+  /** Direct subagent children per workspace id, summed across its sessions. */
+  readonly subCounts: Readonly<Record<string, number>>
+  /**
+   * Most recent session mutation per workspace id, from the host's own
+   * `updatedAt`. This is what the activity sort ranks on: the plugin's local
+   * open-stamps are an in-page approximation that resets on reload, so a desk
+   * touched last week would otherwise outrank one worked on this morning.
+   */
+  readonly recency: Readonly<Record<string, number>>
   readonly onCreate: (index?: number) => void
   readonly onEnter: (wsId: string) => void
   readonly onClear: (wsId: string) => void
@@ -618,8 +653,13 @@ export function TopView(props: {
    * Reorder the desk grid by the chosen mode (one-shot; manual drag still wins
    * afterwards). `manual` only records the mode — the user owns `layout` via
    * drag. `activity` ranks every real workspace by the most-recent session
-   * activity (the plugin's own `activity` stamps) and compacts them to the
-   * front, pinning 未分组 at cell 0 and pushing empty stations to the tail.
+   * activity and compacts them to the front, pinning 未分组 at cell 0 and
+   * pushing empty stations to the tail.
+   *
+   * The ranking key is the host's `updatedAt` first, with the plugin's own
+   * open-stamp as a tiebreaker only. The stamps are volatile — they are not
+   * persisted and start empty on every load — so ranking on them alone made
+   * "活跃度" mean "whatever the user clicked since the last refresh".
    */
   const applySort = (mode: 'manual' | 'activity'): void => {
     if (mode === 'manual') {
@@ -627,17 +667,12 @@ export function TopView(props: {
       return
     }
     const realDesks = desks.filter(d => d.id !== UNGROUPED_KEY)
-    const recency = (id: string): number => {
-      const desk = realDesks.find(d => d.id === id)
-      if (desk === undefined) return 0
-      let max = 0
-      for (const sid of desk.sessionIds) {
-        const t = scene.activity[sid] ?? 0
-        if (t > max) max = t
-      }
-      return max
-    }
-    const ordered = [...realDesks].sort((a, b) => recency(b.id) - recency(a.id))
+    const recencyOf = (id: string): number => Math.max(
+      props.recency[id] ?? 0,
+      ...(desks.find(d => d.id === id)?.sessionIds ?? []).map(sid => scene.activity[sid] ?? 0),
+      0,
+    )
+    const ordered = [...realDesks].sort((a, b) => recencyOf(b.id) - recencyOf(a.id))
     const next: (string | null)[] = new Array(DESKS).fill(null)
     next[0] = UNGROUPED_KEY
     ordered.forEach((d, i) => { if (i + 1 < DESKS) next[i + 1] = d.id })
@@ -658,7 +693,7 @@ export function TopView(props: {
         }
       />
       <div className="pxo-toolbar">
-        <span style={NEON_BLOCK} />
+        <span className="pxo-toolbar-block" />
         <span className="pxo-toolbar-title">{STR.TOOLBAR_TITLE}</span>
         <span className="pxo-toolbar-sub">{STR.TOOLBAR_SUB(DESKS, onlineCount)}</span>
         <div className="pxo-toolbar-right">
@@ -741,6 +776,8 @@ export function TopView(props: {
               isOnline={isOnline}
               dragging={dragging}
               hoverOver={hovered}
+              subagents={wsId === null ? 0 : (props.subCounts[wsId] ?? 0)}
+              path={desk?.path}
               onPointerDown={(e) => { onDown(e, i) }}
               onPointerMove={onMove}
               onPointerUp={(e) => { onUp(e, i) }}
@@ -782,9 +819,14 @@ export function TopView(props: {
  * @param lastActivity - last-activity epoch ms, or undefined.
  * @param last - the most recent message (role + text), or undefined.
  * @param nodeIndex - 0-based slot index, for the "NODE NN" glyph.
+ * @param subagents - direct subagent children this session owns (0 = none).
+ * @param jobs - background jobs the session can see (0 = none).
+ * @param blank - the session has an empty log (the reusable blank one).
+ * @param canFork - whether the base exposes a fork verb.
  * @param onOpen - open the session on the monitor.
  * @param onEdit - open the existing edit modal for this note.
  * @param onTear - open the existing tear modal for this note.
+ * @param onFork - fork this session and open the child.
  * @param onEnter - pointer entered the card; keep it open.
  * @param onLeave - pointer left the card; schedule hide.
  */
@@ -795,9 +837,14 @@ function StickerPreview(props: {
   readonly lastActivity: number | undefined
   readonly last: { readonly role: string; readonly text: string } | undefined
   readonly nodeIndex: number
+  readonly subagents: number
+  readonly jobs: number
+  readonly blank: boolean
+  readonly canFork: boolean
   readonly onOpen: () => void
   readonly onEdit: () => void
   readonly onTear: () => void
+  readonly onFork: () => void
   readonly onEnter: () => void
   readonly onLeave: () => void
   /** When true, the card plays its 100ms exit transition before unmount. */
@@ -828,8 +875,25 @@ function StickerPreview(props: {
         <span className="pxo-preview-title">{props.title}</span>
         <span className="pxo-preview-node">{STR.PREVIEW_NODE(props.nodeIndex)}</span>
       </div>
-      <div className="pxo-preview-status">{status}</div>
+      <div className="pxo-preview-status">
+        {status}
+        {props.blank ? <span className="pxo-preview-flag blank">{STR.PREVIEW_BLANK}</span> : null}
+      </div>
       <div className="pxo-preview-time">{STR.PREVIEW_RECENT}{formatRelative(props.lastActivity, Date.now())}</div>
+      {/* Topology row: the two new hierarchical signals the host grew. Both are
+          rendered only when non-zero, so a plain session keeps the card short. */}
+      {props.subagents === 0 && props.jobs === 0
+        ? null
+        : (
+            <div className="pxo-preview-links">
+              {props.subagents === 0
+                ? null
+                : <span className="pxo-preview-link sub">{STR.PREVIEW_SUBLINKS(props.subagents)}</span>}
+              {props.jobs === 0
+                ? null
+                : <span className="pxo-preview-link job">{STR.PREVIEW_JOBS(props.jobs)}</span>}
+            </div>
+          )}
       <div className="pxo-preview-msg" aria-hidden="true">
         {props.last === undefined
           ? (
@@ -850,6 +914,9 @@ function StickerPreview(props: {
       <div className="pxo-preview-actions">
         <button type="button" className="pxo-btn-pv open" onClick={props.onOpen}>{STR.PREVIEW_OPEN}</button>
         <button type="button" className="pxo-btn-pv" onClick={props.onEdit}>{STR.PREVIEW_EDIT}</button>
+        {props.canFork
+          ? <button type="button" className="pxo-btn-pv fork" onClick={props.onFork}>{STR.PREVIEW_FORK}</button>
+          : null}
         <button type="button" className="pxo-btn-pv" onClick={props.onTear}>{STR.PREVIEW_TEAR}</button>
       </div>
     </div>
@@ -864,6 +931,8 @@ function Sticker(props: {
   /** Whether this note is the one currently displayed on the monitor. */
   readonly active: boolean
   readonly dragging: boolean
+  /** Direct subagent children this session owns; 0 hides the badge. */
+  readonly subagents: number
   readonly onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void
   readonly onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void
@@ -909,6 +978,15 @@ function Sticker(props: {
           ? STR.STICKER_ACTIVE(props.index)
           : STR.STICKER_SESSION(props.index)}
       </span>
+      {props.subagents > 0
+        ? (
+            <span
+              className="sub-badge"
+              title={STR.PREVIEW_SUBLINKS(props.subagents)}
+              aria-label={STR.PREVIEW_SUBLINKS(props.subagents)}
+            >⇄{props.subagents}</span>
+          )
+        : null}
       <span className="title">{props.label}</span>
       <span className="meta">
         <span>{props.note?.running === true ? STR.STICKER_UPLINK_ACTIVE : STR.STICKER_UPLINK_IDLE}</span>
@@ -1007,6 +1085,94 @@ function NewStickyStack(props: {
   )
 }
 
+/**
+ * The archive drawer: where the notes the user tore off actually go.
+ *
+ * The board's tear gesture has always claimed "撕下后再拖回 = 重新贴上（恢复）",
+ * but the host exposed no unarchive verb until `0.1.6-alpha.1`, so the promise
+ * was unfillable and the affordance quietly closed its dialog instead. Now that
+ * `unarchiveSession` exists, the archived half of a desk gets a home: a slate
+ * panel that slides down over the planning board — same green cork, same neon
+ * rule, same paper — listing each torn note greyed out with a restore action.
+ *
+ * Rendered as an overlay *inside* the board rather than a third column: the
+ * desk view's geometry (`--pxo-bx` / `--pxo-bw`) is a two-pane split, and a
+ * drawer is by definition a temporary surface. Overlaying the board also keeps
+ * the CRT untouched, so restoring a note never moves the thing the user is
+ * reading.
+ * @param ids - archived session ids accounted to this desk, newest first.
+ * @param total - the desk's full archived count (may exceed `ids.length`).
+ * @param notes - session records, for titles and blank/origin marks.
+ * @param labels - the user's display-text overrides.
+ * @param canRestore - whether the base exposes an unarchive verb.
+ * @param onRestore - restore one session to the board.
+ * @param onClose - collapse the drawer.
+ */
+function ArchiveDrawer(props: {
+  readonly ids: readonly string[]
+  readonly total: number
+  readonly notes: Readonly<Record<string, NoteRecord | undefined>>
+  readonly labels: Readonly<Record<string, string>>
+  readonly canRestore: boolean
+  readonly onRestore: (sessionId: string) => void
+  readonly onClose: () => void
+}): ReactNode {
+  return (
+    <div className="pxo-archive" role="region" aria-label={STR.ARCHIVE_TITLE}>
+      <div className="pxo-archive-hd">
+        <span className="ttl">{STR.ARCHIVE_TITLE}</span>
+        <span className="trail">{STR.ARCHIVE_STATS(props.total)}</span>
+        <button type="button" className="pxo-archive-close" onClick={props.onClose}>
+          {STR.ARCHIVE_CLOSE}
+        </button>
+      </div>
+      {props.ids.length === 0
+        ? (
+            <div className="pxo-archive-empty">
+              <span className="big">{STR.ARCHIVE_EMPTY}</span>
+              <span className="hint">{STR.ARCHIVE_EMPTY_HINT}</span>
+            </div>
+          )
+        : (
+            <>
+              <div className="pxo-archive-grid">
+                {props.ids.map((sid, i) => {
+                  const note = props.notes[sid]
+                  const label = props.labels[sid] ?? note?.title ?? sid.slice(0, 8)
+                  const color = STICKER_COLORS[hashIndex(sid, STICKER_COLORS.length)]
+                  return (
+                    <div
+                      key={sid}
+                      className="pxo-archive-note"
+                      style={{ background: color } as CSSProperties}
+                    >
+                      <span className="idx">#{String(i + 1).padStart(2, '0')}</span>
+                      <span className="lbl">{label}</span>
+                      <button
+                        type="button"
+                        className="pxo-archive-restore"
+                        disabled={!props.canRestore}
+                        title={props.canRestore ? STR.ARCHIVE_RESTORE : STR.NOTICE_RESTORE_OFFLINE}
+                        onClick={() => { props.onRestore(sid) }}
+                      >
+                        {STR.ARCHIVE_RESTORE}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="pxo-archive-foot">
+                {props.total > props.ids.length
+                  ? <span>{STR.ARCHIVE_LIMIT_HINT(props.ids.length, props.total)}</span>
+                  : null}
+                <span>{STR.ARCHIVE_HINT}</span>
+              </div>
+            </>
+          )}
+    </div>
+  )
+}
+
 /** The desk front view: planning board + CRT cutout + new-note stack. */
 export function DeskView(props: {
   readonly store: Store
@@ -1020,6 +1186,20 @@ export function DeskView(props: {
   readonly isUngrouped?: boolean
   /** Resolve the latest message of a session for the hover preview. */
   readonly readLastMessage: (sessionId: string) => { readonly role: string; readonly text: string } | undefined
+  /** Archived session ids this desk accounted for (the drawer's contents). */
+  readonly archived: readonly string[]
+  /** Direct subagent children per session id. */
+  readonly subagents: Readonly<Record<string, number>>
+  /** Background jobs per session id. */
+  readonly jobs: Readonly<Record<string, number>>
+  /** Whether the base exposes an unarchive verb. */
+  readonly canRestore: boolean
+  /** Whether the base exposes a fork verb. */
+  readonly canFork: boolean
+  /** Restore one archived session. */
+  readonly onRestore: (sessionId: string) => void
+  /** Fork one session and open the child. */
+  readonly onFork: (sessionId: string) => void
 }): ReactNode {
   const { store, desk, notes } = props
   const scene = useScene(store)
@@ -1065,7 +1245,7 @@ export function DeskView(props: {
   // as many whole cells as fit, so the board reads as a full pinboard instead
   // of a short row floating in empty space.
   const slotsRef = useRef<HTMLDivElement | null>(null)
-  const { columns, rows, noteW } = useFittedGrid(slotsRef)
+  const { columns, rows, noteW } = useFittedGrid(slotsRef, !scene.archiveOpen)
   const cells = columns * rows
   // Capacity follows the board: every cell that fits is a usable slot. Drawing
   // cells the limit forbids would fill the slate with inert backing, which
@@ -1210,58 +1390,91 @@ export function DeskView(props: {
         <div className="pxo-board-hd">
           <span>{STR.MATRIX_TITLE}</span>
           <span className="trail">{STR.MATRIX_STATS(used, limit)}</span>
+          {/* The drawer's entry point. Hidden entirely when the desk has no
+              archived notes, so a clean board carries no dead control. */}
+          {props.archived.length === 0
+            ? null
+            : (
+                <button
+                  type="button"
+                  className={scene.archiveOpen ? 'pxo-archive-btn is-open' : 'pxo-archive-btn'}
+                  aria-expanded={scene.archiveOpen}
+                  onClick={() => { store.set({ archiveOpen: !scene.archiveOpen }) }}
+                >
+                  {STR.ARCHIVE_OPEN}
+                  <b>{props.archived.length}</b>
+                </button>
+              )}
         </div>
-        {/* Both axes are `1fr`: the hook already chose counts that divide the
-            measured box evenly, so the tracks consume every pixel and the grid
-            reaches all four edges. The note inside each cell is sized by
-            `--pxo-note-w` and centred, keeping its proportions while the cell
+        {/* The board shows either the note grid or the archive drawer, never
+            both. They share the same flex track, so swapping one for the other
+            leaves the header — and the button that toggles back — in place.
+            Both axes of the grid are `1fr`: the hook already chose counts that
+            divide the measured box evenly, so the tracks consume every pixel and
+            the grid reaches all four edges. The note inside each cell is sized
+            by `--pxo-note-w` and centred, keeping its proportions while the cell
             takes its full share. */}
-        <div
-          ref={slotsRef}
-          className="pxo-slots"
-          style={{
-            gridTemplateColumns: `repeat(${columns},minmax(0,1fr))`,
-            gridTemplateRows: `repeat(${rows},minmax(0,1fr))`,
-            ['--pxo-note-w' as string]: `${Math.round(noteW)}px`,
-          }}
-        >
-          {new Array(cells).fill(0).map((_, i) => {
-            const sid = order[i] ?? null
-            const note = sid === null ? undefined : notes[sid]
-            // The invite cell is the lowest free one, not a fixed index: with
-            // the grid sized to the board, the last cell is rarely the one a
-            // new note would actually land in.
-            const isInvite = sid === null && i === firstFree && used < limit - 1
-            return (
+        {scene.archiveOpen
+          ? (
+              <ArchiveDrawer
+                ids={props.archived.slice(0, ARCHIVE_LIMIT)}
+                total={props.archived.length}
+                notes={notes}
+                labels={scene.labels}
+                canRestore={props.canRestore}
+                onRestore={props.onRestore}
+                onClose={() => { store.set({ archiveOpen: false }) }}
+              />
+            )
+          : (
               <div
-                key={i}
-                className={isInvite ? 'pxo-slot empty' : 'pxo-slot'}
-                ref={(el) => { SLOTS[i] = el }}
-                data-over={drag?.moved === true && drag.over === i ? '1' : '0'}
-                onPointerUp={endDrag}
-                onPointerMove={moveDrag}
-                onClick={() => {
-                  if (isInvite && !props.isUngrouped) store.set({ modal: { kind: 'new', pos: i } })
+                ref={slotsRef}
+                className="pxo-slots"
+                style={{
+                  gridTemplateColumns: `repeat(${columns},minmax(0,1fr))`,
+                  gridTemplateRows: `repeat(${rows},minmax(0,1fr))`,
+                  ['--pxo-note-w' as string]: `${Math.round(noteW)}px`,
                 }}
               >
-                <Sticker
-                  sessionId={sid}
-                  note={note}
-                  index={i}
-                  active={sid !== null && sid === scene.opened}
-                  dragging={drag?.kind === 'sticker' && drag.pos === i && drag.moved}
-                  label={sid === null ? '' : (scene.labels[sid] ?? note?.title ?? '')}
-                  onPointerDown={(e) => { if (sid !== null) startDrag(e, { kind: 'sticker', pos: i, sid }) }}
-                  onPointerMove={moveDrag}
-                  onPointerUp={endDrag}
-                  onPreviewEnter={schedulePreview}
-                  onPreviewLeave={cancelPreview}
-                  onOpen={() => { hidePreviewNow(); if (sid !== null) props.onOpen(sid) }}
-                />
+                {new Array(cells).fill(0).map((_, i) => {
+                  const sid = order[i] ?? null
+                  const note = sid === null ? undefined : notes[sid]
+                  // The invite cell is the lowest free one, not a fixed index:
+                  // with the grid sized to the board, the last cell is rarely
+                  // the one a new note would actually land in.
+                  const isInvite = sid === null && i === firstFree && used < limit - 1
+                  return (
+                    <div
+                      key={i}
+                      className={isInvite ? 'pxo-slot empty' : 'pxo-slot'}
+                      ref={(el) => { SLOTS[i] = el }}
+                      data-over={drag?.moved === true && drag.over === i ? '1' : '0'}
+                      onPointerUp={endDrag}
+                      onPointerMove={moveDrag}
+                      onClick={() => {
+                        if (isInvite && !props.isUngrouped) store.set({ modal: { kind: 'new', pos: i } })
+                      }}
+                    >
+                      <Sticker
+                        sessionId={sid}
+                        note={note}
+                        index={i}
+                        active={sid !== null && sid === scene.opened}
+                        dragging={drag?.kind === 'sticker' && drag.pos === i && drag.moved}
+                        subagents={sid === null ? 0 : (props.subagents[sid] ?? 0)}
+                        label={sid === null ? '' : (scene.labels[sid] ?? note?.title ?? '')}
+                        onPointerDown={(e) => { if (sid !== null) startDrag(e, { kind: 'sticker', pos: i, sid }) }}
+                        onPointerMove={moveDrag}
+                        onPointerUp={endDrag}
+                        onPreviewEnter={schedulePreview}
+                        onPreviewLeave={cancelPreview}
+                        onOpen={() => { hidePreviewNow(); if (sid !== null) props.onOpen(sid) }}
+                      />
+                    </div>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
+            )}
       </div>
 
       {props.isUngrouped
@@ -1282,18 +1495,28 @@ export function DeskView(props: {
         const sid = preview.sid
         const note = notes[sid]
         const label = scene.labels[sid] ?? note?.title ?? ''
+        // The host's own stamp is authoritative and survives a reload; the local
+        // open-stamp only fills the gap between host refreshes.
+        const lastActivity = Math.max(note?.updatedAt ?? 0, scene.activity[sid] ?? 0) || undefined
         return (
           <StickerPreview
             rect={preview.rect}
             title={label}
             running={note?.running === true}
-            lastActivity={scene.activity[sid]}
+            lastActivity={lastActivity}
             last={props.readLastMessage(sid)}
             nodeIndex={order.indexOf(sid)}
+            subagents={props.subagents[sid] ?? 0}
+            jobs={props.jobs[sid] ?? 0}
+            blank={note?.blank === true}
+            canFork={props.canFork}
             closing={previewClosing}
             onOpen={() => { hidePreviewNow(); props.onOpen(sid) }}
             onEdit={() => { hidePreviewNow(); store.set({ modal: { kind: 'edit', sid } }) }}
             onTear={() => { hidePreviewNow(); store.set({ modal: { kind: 'tear', sid } }) }}
+            // Forking mints a session, so it confirms first — same shape as the
+            // tear and edit actions rather than a bare click that spawns a link.
+            onFork={() => { hidePreviewNow(); store.set({ modal: { kind: 'fork', sid } }) }}
             onEnter={keepPreview}
             onLeave={cancelPreview}
           />
@@ -1449,6 +1672,7 @@ export function Dialogs(props: {
   readonly onTear: (sessionId: string) => void
   readonly onClear: (workspaceId: string) => void
   readonly onRename: (workspaceId: string, title: string) => void
+  readonly onFork: (sessionId: string) => void
 }): ReactNode {
   const { store, notes } = props
   const scene = useScene(store)
@@ -1501,6 +1725,17 @@ export function Dialogs(props: {
           danger
           onCancel={close}
           onOk={() => { close(); props.onTear(modal.sid) }}
+        />
+      )
+    case 'fork':
+      return (
+        <Modal
+          title={STR.DIALOG_FORK_TITLE}
+          desc={STR.DIALOG_FORK_DESC}
+          anchor="board"
+          okText={STR.DIALOG_FORK_ACTION}
+          onCancel={close}
+          onOk={() => { close(); props.onFork(modal.sid) }}
         />
       )
     case 'clear':

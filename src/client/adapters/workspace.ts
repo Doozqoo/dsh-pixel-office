@@ -1,11 +1,13 @@
 /**
  * Workspace adapter — wraps all workspace / uiWorkspace service calls.
  *
- * The harness moved `connectWorkspace` / `pickDirectory` / `archiveSession`
- * from `workspaces` (v2) to `uiWorkspace` (master >= 0.1.2-alpha.1). This
- * adapter probes both surfaces and provides a unified API with fallback chains,
- * so the rest of the plugin never needs to know which service carries which
- * method.
+ * The harness has moved workspace-capability methods across two services over
+ * the supported span: `connectWorkspace` / `pickDirectory` / `archiveSession`
+ * left `workspaces` (WorkspaceController) for `uiWorkspace` in `0.1.2-alpha.1`,
+ * and `0.1.6-alpha.1` added the reverse-direction verbs this adapter now exposes
+ * (`unarchiveSession`, `forkSession`). This adapter probes both surfaces and
+ * provides a unified API with fallback chains, so the rest of the plugin never
+ * needs to know which service carries which method.
  * @module dsh-client-pixel-office/adapters/workspace
  */
 
@@ -25,8 +27,12 @@ export interface WorkspaceAdapter {
   pickDirectory: () => Promise<string | null>
   /** Connect (or create) a blank session bound to a workspace. */
   connectWorkspace: (workspaceId: string) => Promise<string>
-  /** Archive a session. */
+  /** Archive a session (the "tear the note off the board" action). */
   archiveSession: (sessionId: string) => Promise<void>
+  /** Unarchive a session (the "stick the note back on" action). */
+  unarchiveSession: (sessionId: string) => Promise<void>
+  /** Whether unarchive is available on this base. */
+  canUnarchive: boolean
   /** Probe the adapter and report which capabilities are available. */
   probe: () => CapabilityReport
 }
@@ -70,9 +76,28 @@ export function createWorkspaceAdapter(deps: AdapterDeps): WorkspaceAdapter {
     throw new Error('archiveSession unavailable on both surfaces')
   }
 
+  /**
+   * Unarchive — the half of the archive gesture that was missing.
+   *
+   * The plugin's own copy has always promised "撕下后再拖回 = 重新贴上（恢复）",
+   * but until `0.1.6-alpha.1` shipped `unarchiveSession` there was no verb to
+   * call and the affordance silently closed the dialog instead. Probing both
+   * surfaces keeps older bases working (the button reports unavailability rather
+   * than pretending).
+   */
+  const canUnarchive = u?.unarchiveSession !== undefined || w?.unarchiveSession !== undefined
+
+  const unarchiveSession = async (sessionId: string): Promise<void> => {
+    if (u?.unarchiveSession !== undefined) { await u.unarchiveSession(sessionId); return }
+    if (w?.unarchiveSession !== undefined) { await w.unarchiveSession(sessionId); return }
+    throw new Error('unarchiveSession unavailable on both surfaces')
+  }
+
   const probe = (): CapabilityReport => {
     const ok: string[] = []
     const missing: { name: string; reason: string }[] = []
+    /** Soft capabilities: absent ones degrade one affordance, never the mount. */
+    const soft: { name: string; reason: string }[] = []
 
     if (w?.create !== undefined) ok.push('workspaces.create')
     else missing.push({ name: 'workspaces.create', reason: '无法创建工作区' })
@@ -92,11 +117,18 @@ export function createWorkspaceAdapter(deps: AdapterDeps): WorkspaceAdapter {
     if (hasArchive) ok.push('archiveSession')
     else missing.push({ name: 'archiveSession', reason: '无法归档会话' })
 
-    return { ok, missing, viable: missing.length === 0 }
+    // Soft: the archive drawer's restore buttons render disabled instead. This
+    // must NOT sink `viable` — an older base still paints the whole office, and
+    // refusing to mount over one missing verb would trade a working desk for a
+    // blank page.
+    if (canUnarchive) ok.push('unarchiveSession')
+    else soft.push({ name: 'unarchiveSession', reason: '归档恢复不可用（基座过旧）' })
+
+    return { ok, missing: [...missing, ...soft], viable: missing.length === 0 }
   }
 
   return {
     create, delete: deleteWorkspace, rename, canRename,
-    pickDirectory, connectWorkspace, archiveSession, probe,
+    pickDirectory, connectWorkspace, archiveSession, unarchiveSession, canUnarchive, probe,
   }
 }

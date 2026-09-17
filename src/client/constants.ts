@@ -63,10 +63,29 @@ export const PREVIEW_HIDE_DELAY_MS = 100
 /** CRT reveal animation cleanup delay (ms). */
 export const REVEAL_CLEANUP_MS = 2000
 
+/**
+ * How long a just-opened session stays exempt from the "not on this desk" sweep.
+ *
+ * Creating or forking a session returns before the workspace list publishes the
+ * new id, so `activeDesk.sessionIds.includes(opened)` is briefly false. Without
+ * a grace window the monitor would drop the session it was just asked to show
+ * and stay dark until the user found and clicked the new note.
+ */
+export const OPEN_GRACE_MS = 3000
+
 // ── Layout ─────────────────────────────────────────────────────────────────
 
 /** Width of the sticker preview card, in CSS pixels. */
 export const PREVIEW_CARD_W = 268
+
+/**
+ * How many archived notes the drawer renders before it stops.
+ *
+ * The archive is registry-global and unbounded, so an uncapped drawer would
+ * mount a node per archived session ever created. 96 comfortably exceeds the
+ * board's own capacity (≈56 notes at 2560×1440) while keeping the DOM bounded.
+ */
+export const ARCHIVE_LIMIT = 96
 
 /** Plugin identifier used for slot registrations, theme overrides, and logs. */
 export const PLUGIN_ID = 'pixel-office'

@@ -12,6 +12,8 @@
 
 **本插件只支持 DeepSeek Harness 的最新版本**（≥ `0.1.2-alpha.1`，客户端 runtime 已拆分为 `api/*` + `ui/*`）。更早的基座版本一律不支持，也不再做向下兼容。
 
+当前代码已对齐并实测于 **`0.1.6-alpha.2`**（`dsh-v0.1.6-alpha.2`，2026-09-18）。
+
 原因不是偷懒：不同基座的 `dsh.client.inject` 依赖清单互不兼容（当前基座已删除 `@deepseek-ai/dsh-client-runtime`，旧基座则缺少 `session-controller` / `workspace-controller` 等包），一份 manifest 无法通吃。**解决办法只有一个：把 DeepSeek Harness 升到最新版。还有啥不对的，能动手就别吵吵**
 
 **升级基座后务必重新挂载**（`dsh.client.inject` 在插件加入 profile 时解析一次，重启 `dsh web` **不会**重读）：
@@ -20,6 +22,37 @@
 dsh plugin --profile web remove dsh-client-pixel-office
 dsh plugin --profile web add <本仓库绝对路径>
 ```
+
+## 对齐基座演进（0.1.2-alpha.1 → 0.1.6-alpha.2）
+
+基座在这段区间里动了两处会**直接打断插件**的地方，另外长出四类新能力。下表是逐条核对后的处理结果（每行都有基座源码依据，不是推测）。
+
+### 破坏性变更（已修）
+
+| 基座变更 | 依据 | 插件处理 |
+|---|---|---|
+| `ISessions` 删除了 `open(id)` / `openSubagent(address)` / `clear()`；会话切换改为视图所有者的职责 | `packages/api/session-controller/src/client/contract/sessions.ts` | 新增导航链：`uiWorkspace.openSession(target)` → 旧 `sessions.open` 兜底。原代码在 0.1.6 上 `s?.open` 恒为 `undefined`，可选链把它变成**静默 no-op** —— 点便利贴完全没反应。同时 `openSession` 现在也接 `SubagentAddress`，子代理链路可直接打开 |
+| `details` 槽被删除，右侧栏换成可停靠的 `rightbar` | `packages/client/ui-layout/src/client/index.ts`（`rightbar`）、`ui-sidebar-right/src/client/contract/slots.ts` | `SELECTORS.DETAILS` 那条 `display:none` 规则永不匹配，是死代码 —— 已替换为右侧栏整套处理（见下） |
+| 基座版本号串带 commit 与 dirty 尾巴（`0.1.6-alpha.2-cd5ef81-dirty`），与里程碑裸版本号直接 `localeCompare` 会把**每个真实基座都判成"高于已知最新版"** | `compat.ts` 前后对比 | 预发布标识先切掉首个 `-` 之后的构建元数据，再按段数值比较（`alpha.10` > `alpha.9`） |
+| 客户端 summary 长出新字段：`updatedAt` / `blank` / `origin`，列表状态新增 `subagentsByParent` / `jobsBySession` | `packages/api/session-controller/src/client/sessions/service.ts` | 分别接到活跃度排序、便利贴预览、空会话角标、子链路与作业计数 |
+
+### 新增能力（已接入像素语言）
+
+| 基座新能力 | 依据 | 插件呈现 |
+|---|---|---|
+| `uiWorkspace.unarchiveSession` / `workspaces.unarchiveSession` | `ui-workspace/src/client/navigation.ts:203`、`api/workspace-controller/src/client/service.ts` | **归档抽屉**。插件的文案一直在承诺"撕下后再拖回 = 重新贴上"，但基座此前没有恢复动词，那个入口只是关掉弹窗。现在撕下的便利贴落进计划板上的抽屉，可原格恢复 |
+| `uiWorkspace.forkSession` / `sessions.fork` | 同上：`navigation.ts:172` | 便利贴预览新增 `⑂ 分叉`：以已完成回合为界复制一条新链路，并自动接入显示器 |
+| `subagentsByParent`（durable 父子目录）+ `uiWorkspace.openSession(SubagentAddress)` | `subagent/subagent/src/control-types.ts`（`SubagentCatalog` / `SubagentAddress`） | 工位卡与便利贴显示 `⇄N` 子链路角标，预览卡显示 `⇄ N 条子链路` |
+| `jobsBySession` 后台作业投影 | `sessions/service.ts:67` | 预览卡显示 `⚙ N 个后台作业`（为 0 时不出现在卡面上） |
+| `SessionSummary.updatedAt` | `sessions/service.ts:47` | 「排序 · 活跃度」与预览卡的"最近活动"改用基座时间戳。原来只按插件自己写的 stamp 排，而那个 stamp 不持久化、刷新即空 —— 等于"活跃度"实际含义是"这次刷新后你点过谁" |
+| `uiWorkspace.listDirectory` / `createDirectory`、`--dsw-alias-link` / `--dsw-alias-bg-document-preview` / `--dsw-corner-shape` 等新令牌 | `ui-theme/src/styles/*.css` | 新令牌补进两套色板；`--dsw-corner-shape` 显式设为 `square`（基座用全局选择器套 superellipse，而办公室没有任何曲线几何） |
+
+### 右侧栏（新 chrome 面，此前完全没皮肤化）
+
+基座的右侧栏是**可停靠 + 可拆分 + 可浮动**的一整套，标签页里跑计划 / 交付物 / 终端 / 文件 / 文档预览。插件的处理分两种：
+
+- **停靠态**（`.panel`，`z-index:10`）本来就被 office 背景盖住（overlay 层是 20）——但那是 z-index 的巧合而非设计，现在**显式隐藏右列**，让 CRT 独占右半屏，桌面上不会滑进来一块宿主面板。
+- **全屏态**（`z-index:40`）与**浮动面板**（`[data-sidebar-right-float-host]`，`z-index:60`）都落在 overlay **之上**，不做处理就会以原生外观飘在像素界面上。现在整套 dockkit（pane / strip / tab chip / divider / tab 菜单）都按像素面板重绘：直角、等宽字体、硬阴影、霓虹描边。
 
 ## 视觉
 
@@ -59,10 +92,15 @@ dsh plugin --profile web add <本仓库绝对路径>
 | **马赛克消除** | 开便利贴时，conversation slot 上盖主题色马赛克遮罩，每个小方块随机逐个 pop 消失，露出下面的真实对话 |
 | **像素猫** | 仅在工位有会话运行时出现于显示器里；静止偶尔眨眼；待机时不显示 |
 | **动效档位** | `CALM`（仅保留配色，停止环境动效）/ `OVERDRIVE`（全动效）；尊重宿主 `prefers-reduced-motion` |
-| **工位排序** | 顶视图工具栏「排序」分段控件：**手动**（默认，布局完全交给拖拽）/ **活跃度**（按各工位最近会话活动时间重排，一次性应用，之后仍可继续拖拽微调）。「未分组」始终钉在第 1 格 |
+| **工位排序** | 顶视图工具栏「排序」分段控件：**手动**（默认，布局完全交给拖拽）/ **活跃度**（按各工位最近会话活动时间重排，一次性应用，之后仍可继续拖拽微调）。「未分组」始终钉在第 1 格。排序键取基座 `SessionSummary.updatedAt`，插件自己的点击 stamp 只作同分时的次键 |
+| **归档抽屉** | 计划板板头的「归档 N」按钮下拉一层抽屉（与便利贴网格互斥占用同一栏位，板头始终可见可点）。列出该工位被撕下的便利贴，每张一张纸 + 一个「恢复」按钮；恢复走 `uiWorkspace.unarchiveSession`，基座把会话放回它记录的工作区位置，插件不做猜测。工作区已被删除的归档会话落到「未分组」工位名下，否则它们将永远无法恢复 |
+| **分叉链路** | 便利贴预览的 `⑂ 分叉` 按钮（基座支持分叉时才出现）把会话以已完成回合为界复制一条新链路，并自动接入显示器 |
+| **子链路 / 作业角标** | 工位卡与便利贴显示 `⇄N` 子代理链路数；便利贴预览额外显示 `⇄ N 条子链路` 与 `⚙ N 个后台作业`；空会话带 `空会话 · BLANK` 角标。全部为 0 时不渲染，普通会话卡面保持干净 |
+| **右侧栏 / 浮动面板** | 停靠态在进入工位时随右列一起隐藏（CRT 独占右半屏）；全屏态与 dockkit 浮动面板按像素面板重绘（直角、等宽、硬阴影、霓虹描边），tab 条、tab 芯片、分隔条、tab 操作菜单一并覆盖 |
 | **事件响应** | 订阅 `connection/reset`（断线提示）、`theme/change`（外观信号） |
-| **版本标识** | 顶视图底部状态条右端与设置页 hero 显示 `POWERED BY DSH <基座版本号>`（如 `0.1.2-alpha.1-cd5ef81-dirty`）。显示的是**宿主基座**的版本，不是本插件的——基座只在侧边栏品牌区把这串文本渲染出来（由 `process.env.DSH_CLIENT_VERSION/COMMIT_HASH/GIT_DIRTY` 构建期内联），没有 cordis 服务、没有 `window` 全局、也没有 meta 标签，因此插件从 `[data-slot="sidebar"]` 里读。读不到时只显示 `POWERED BY DSH`，绝不猜一个版本号 |
+| **版本标识** | 顶视图底部状态条右端与设置页 hero 显示 `POWERED BY DSH <基座版本号>`（如 `0.1.6-alpha.2-ddefc45`）。显示的是**宿主基座**的版本，不是本插件的——基座只在侧边栏品牌区把这串文本渲染出来（由 `process.env.DSH_CLIENT_VERSION/COMMIT_HASH/GIT_DIRTY` 构建期内联），没有 cordis 服务、没有 `window` 全局、也没有 meta 标签，因此插件从 `[data-slot="sidebar"]` 里读。读不到时只显示 `POWERED BY DSH`，绝不猜一个版本号 |
 | **依赖的服务** | 通过 `export const inject` 声明 `slots` / `theme` / `workspaces` / `uiWorkspace` / `sessions` 五个服务——基座的插件守卫**只把声明过的服务交给插件**，未声明的一律解析为 `undefined` |
+| **能力降级** | 探测结果里只有"硬能力"（`slots`、会话导航、`sessions.binding`）会阻止挂载；缺 `unarchiveSession` 之类的**软能力**只让对应按钮进入 disabled 并在 toast 里说明，绝不因为一个动词缺失就把整间办公室换成白屏 |
 
 ## 工程架构
 
@@ -76,16 +114,20 @@ dsh plugin --profile web add <本仓库绝对路径>
 
 | 适配器 | 封装的服务 | 核心职责 |
 |---|---|---|
-| `workspace.ts` | `workspaces` + `uiWorkspace` | 工作区创建、删除、重命名、目录选择、会话归档 |
-| `session.ts` | `sessions` | 会话打开、创建 |
+| `workspace.ts` | `workspaces` + `uiWorkspace` | 工作区创建、删除、重命名、目录选择、会话归档**与恢复** |
+| `session.ts` | `sessions` + `uiWorkspace.openSession` | 会话打开（含旧的 `sessions.open` 兜底与子代理地址）、创建、分叉、消息面读取 |
 | `theme.ts` | `theme` | 主题 token 覆盖 |
 | `slots.ts` | `slots` | 插槽注册与注入 |
 | `events.ts` | `ctx.on` / `ctx.effect` | 事件订阅（`connection/reset`、`theme/change`） |
-| `dom.ts` | — | 基座 DOM 选择器集中管理（`data-slot` 属性变更时只改此处） |
+| `dom.ts` | — | 基座 DOM 选择器集中管理（`data-slot` / `data-dockkit-*` 属性变更时只改此处） |
+
+> **导航为什么落在 session 适配器里**：`0.1.6-alpha.1` 把 `sessions.open` 从 `ISessions` 删掉了，会话切换改由视图所有者（`uiWorkspace`）负责。适配器把 `uiWorkspace.openSession` 与旧 `sessions.open` 串成一条链，一处改动同时喂两个基座世代 —— 调用方拿到的仍是"打开这个会话"这一个语义。
 
 ### 能力探测 (`probeAdapters`)
 
-插件启动时对所有适配器执行能力探测。硬依赖（`slots`）失败则阻止挂载；软依赖（`theme`、`session` 绑定）缺失则报告警告但继续运行。
+插件启动时对所有适配器执行能力探测。**硬依赖**（`slots`、会话导航、`sessions.binding`）失败才阻止挂载；**软依赖**（`unarchiveSession`、`forkSession`、`theme` 覆盖）缺失只报告警告并让对应入口进入 disabled，插件继续运行。
+
+> 这条区分是刻意的：早期版本把"任何一项探测失败"都算不可用，于是一个基座少一个动词就会让整间办公室退化成白屏，代价与收益完全不匹配。
 
 ### 版本兼容矩阵 (`compat.ts`)
 
@@ -203,8 +245,10 @@ npx @deepseek-ai/dsh plugin --profile web remove dsh-client-pixel-office
 | 自定义文字 | `localStorage` | 便利贴上的展示文字 | 否 |
 | 动效偏好 | `localStorage` | `intensity` / `grid` | 否 |
 | `opened` | 不持久化 | 当前打开的便利贴 | —— |
+| `archiveOpen` | 不持久化 | 归档抽屉是否拉开（离开工位自动收起） | —— |
+| `activity` | 不持久化 | 本页点击过的会话时间戳（仅作活跃度排序的次键） | —— |
 
-`opened`（"这次进工位点开了哪张"）刻意**不**持久化，刷新后自动从黑屏待机开始。持久化写入已做引用比较：拖拽 50 次最多写 0 次 storage。隐私模式下 storage 抛错会静默降级为仅内存。
+`opened`（"这次进工位点开了哪张"）刻意**不**持久化，刷新后自动从黑屏待机开始。归档抽屉同理：它是对**基座**归档集合的一扇窗，而基座那份集合完全在插件之外 —— 记住"上次拉开过"只会在用户还没看板子的时候先弹出一个面板。持久化写入已做引用比较：拖拽 50 次最多写 0 次 storage。隐私模式下 storage 抛错会静默降级为仅内存。
 
 ## 目录结构
 
@@ -270,8 +314,12 @@ npm 同名包不能覆盖已发布版本，每次发布先 `npm version patch|mi
 ## 已知限制
 
 - **持久化只在本浏览器生效。** 换浏览器或清缓存会回到默认推导。
-- **俯视图固定 24 工位，第 1 格（左上角）常驻为「未分组」工位**，展示未被任何工作区收纳的会话（与官方 UI 的「未分组」分组一致）。其余 23 格用于真实工作区，超出的工作区仍存在、仍可从原生界面访问，只是没有工位可放。「未分组」工位可点击进入，其下会话可继续对话或拖出归档；但工位本身为只读：不可重命名 / 清空 / 删除，也不能在其下新建会话——官方不提供「无所属工作区」的建会能力，插件保持与官方一致，不自行扩展该功能。
+- **俯视图固定 24 工位，第 1 格（左上角）常驻为「未分组」工位**，展示未被任何工作区收纳的会话（与官方 UI 的「未分组」分组一致）。其余 23 格用于真实工作区，超出的工作区仍存在、仍可从原生界面访问，只是没有工位可放。「未分组」工位可点击进入，其下会话可继续对话或拖出归档；但工位本身为只读：不可重命名 / 清空 / 删除，也不能在其下新建会话——官方不提供「无所属工作区」的建会能力，插件保持与官方一致，不自行扩展该功能。它的归档抽屉仍然可用（用于恢复工作区已被删除的归档会话）。
+- **归档抽屉的归属靠 `workspace.sessionIds` 反推。** 基座的归档集合是 registry 级的扁平列表，不携带"属于哪个工作区"；插件用「该工作区记着这个 id」来归类，反推不到的（例如工作区本身已被删除）统一落到「未分组」。若某个基座版本的 `sessionIds` 不含已归档会话，表现会是所有归档都堆在「未分组」工位——功能仍然可用，只是分类变粗。
+- **恢复后的落点由基座决定，不由插件决定。** `unarchiveSession` 把会话放回它记录的工作区位置；便利贴具体落到哪一格由 reconcile + `fitInto` 取最低空格，所以恢复不等于"回到撕下前那一格"。格子满了会顺延到下一个空格。
+- **抽屉一次最多渲染 96 张便利贴**（`ARCHIVE_LIMIT`）。归档是基座级的无上界集合，不设上限就是给"历史上所有归档过的会话"各挂一个 DOM 节点；超出时抽屉底部会写明"仅显示最近 N / M 张"。
 - **宿主处于亮色模式时，会话内部（host 渲染的 conversation）仍按宿主主题显示**，可能与插件强制深色的 CRT 边框不一致；代码块、表格、输入框有兜底规则，未必覆盖全。
+- **右侧栏的停靠态在进入工位时被隐藏**（CRT 独占右半屏，与侧栏同一处理思路），全屏态与浮动面板保留并按像素面板重绘。若你习惯把右侧栏常驻开着用，进工位时它会让位给显示器。
 - **模型 / Agent 预设分区只做了外观皮肤**（直角 + 等宽字体），内部控件未逐项验证。
 - **暂无自动化测试。** `placement.ts` 抽象出来便于测试，但测试还没写，欢迎 PR。
 

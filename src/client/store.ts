@@ -25,6 +25,7 @@ export type Modal =
   | { kind: 'edit'; sid: string }
   | { kind: 'full' }
   | { kind: 'tear'; sid: string }
+  | { kind: 'fork'; sid: string }
   | { kind: 'clear'; wsId: string; title: string }
   | { kind: 'rename'; wsId: string; title: string }
 
@@ -116,6 +117,23 @@ export interface SceneState {
    * `layout`; afterwards the user can still drag to fine-tune.
    */
   readonly sortMode: 'manual' | 'activity'
+  /**
+   * Whether the desk view's archive drawer is pulled out.
+   *
+   * The drawer is a peak into the host's archive set, which lives outside this
+   * plugin entirely, so leaving it open across a reload would show a panel the
+   * user did not ask for on a board they have not looked at yet. Volatile.
+   */
+  readonly archiveOpen: boolean
+  /**
+   * Deadline (epoch ms) before which `opened` is exempt from the "not on this
+   * desk" sweep.
+   *
+   * A session created or forked through the host is not in the workspace list
+   * yet when `opened` is set, so the sweep would immediately clear it. Volatile
+   * and never persisted: it only ever exists to bridge one host round-trip.
+   */
+  readonly openedGrace: number
 }
 
 /** Movement in CSS pixels before a pointer press counts as a drag, not a click. */
@@ -142,6 +160,8 @@ const INITIAL: SceneState = {
   link: 'ok',
   scheme: 'dark',
   sortMode: 'manual',
+  archiveOpen: false,
+  openedGrace: 0,
 }
 
 type Listener = () => void

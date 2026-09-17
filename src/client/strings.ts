@@ -62,14 +62,35 @@ export const STR = {
   PREVIEW_OPEN: '▶ 打开会话',
   PREVIEW_EDIT: '✎ 编辑',
   PREVIEW_TEAR: '✂ 撕下',
+  PREVIEW_FORK: '⑂ 分叉',
   PREVIEW_NODE: (n: number) => `NODE ${String(n + 1).padStart(2, '0')}`,
+  PREVIEW_SUBLINKS: (n: number) => `⇄ ${n} 条子链路`,
+  PREVIEW_JOBS: (n: number) => `⚙ ${n} 个后台作业`,
+  PREVIEW_BLANK: '空会话 · BLANK',
+
+  // ── Archive drawer (the missing half of the tear gesture) ─────────────
+  ARCHIVE_OPEN: '归档',
+  ARCHIVE_TITLE: '归档抽屉 / ARCHIVE DRAWER',
+  ARCHIVE_STATS: (n: number) => `${n} 张已撕下 · 点击恢复`,
+  ARCHIVE_EMPTY: '此工位暂无归档',
+  ARCHIVE_EMPTY_HINT: '// 从计划板撕下的便利贴会落到这里',
+  ARCHIVE_RESTORE: '↑ 恢复',
+  ARCHIVE_CLOSE: '✕ 收起',
+  ARCHIVE_LIMIT_HINT: (shown: number, total: number) =>
+    `// 仅显示最近 ${shown} / ${total} 张`,
+  ARCHIVE_HINT: '// 恢复后便利贴回到它原来的格子',
+
+  // ── Fork ───────────────────────────────────────────────────────────────
+  DIALOG_FORK_TITLE: '⑂ 分叉此会话',
+  DIALOG_FORK_DESC: '以当前已完成回合为界复制一条新链路。原会话不受影响，新链路会自动接入显示器。',
+  DIALOG_FORK_ACTION: '分叉',
 
   // ── New sticky stack ──────────────────────────────────────────────────
   STACK_TITLE: '新便利贴堆 / NEW STICKIES',
   STACK_HINT_DRAG: '// 拖拽到计划板空位以创建新会话',
   STACK_HINT_INPUT: '// 在空位松开后弹窗输入会话标题',
   STACK_HINT_TEAR: '// 拖出计划板 = 撕下便利贴（归档）',
-  STACK_HINT_RESTORE: '// 撕下后再拖回 = 重新贴上（恢复）',
+  STACK_HINT_RESTORE: '// 撕下的便利贴进「归档」抽屉，可原格恢复',
   STACK_HINT_OVERLAP: '// 同一位置重叠 = 重新编辑内容',
   STACK_ARROW: '→ DRAG →',
   STACK_DRAG_TO: '拖到计划板',
@@ -81,7 +102,7 @@ export const STR = {
   DIALOG_EDIT_TITLE: '✎ 重新编辑',
   DIALOG_EDIT_DESC: '便利贴重叠视为重新编辑：仅修改展示内容，不影响会话本身。',
   DIALOG_FULL_TITLE: '⚠ 计划板已满',
-  DIALOG_FULL_DESC: '已达当前可用上限（始终保留一个空位用于挪动）。可在设置中提高上限，或先撕下一张便利贴。',
+  DIALOG_FULL_DESC: '已达当前可用上限（始终保留一个空位用于挪动）。放大窗口可容纳更多格子，或先撕下一张便利贴。',
   DIALOG_TEAR_TITLE: '✂ 撕下便利贴？',
   DIALOG_TEAR_DESC: '撕下将归档该会话，便利贴从计划板移除（会话记录保留）；选择重新贴上则放回原位。',
   DIALOG_CLEAR_TITLE: '⌫ 清空工位？',
@@ -132,6 +153,13 @@ export const STR = {
   NOTICE_SPAWNING: '正在生成会话节点… / SPAWNING NODE',
   NOTICE_SPAWNED: '会话节点已上线 / NODE ONLINE',
   NOTICE_SPAWN_FAILED: '节点生成失败 / SPAWN FAILED',
+  NOTICE_RESTORED: '便利贴已重新贴上 / NOTE RE-STUCK',
+  NOTICE_RESTORE_FAILED: '恢复失败 / RESTORE FAILED',
+  NOTICE_RESTORE_OFFLINE: '恢复不可用（基座过旧）/ RESTORE OFFLINE',
+  NOTICE_FORKED: '链路已分叉 / LINK FORKED',
+  NOTICE_FORK_FAILED: '分叉失败 / FORK FAILED',
+  NOTICE_FORK_OFFLINE: '分叉不可用 / FORK OFFLINE',
+  NOTICE_NAV_OFFLINE: '会话切换不可用 / NAVIGATION OFFLINE',
 
   // ── Logo ───────────────────────────────────────────────────────────────
   LOGO_MAIN: 'NEON//NEXUS',

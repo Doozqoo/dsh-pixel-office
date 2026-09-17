@@ -15,7 +15,7 @@
  * harness DOM structure change is a single-file fix.
  * @module dsh-client-pixel-office/styles
  */
-import { SELECTORS } from './adapters/dom.ts'
+import { DOCKKIT_SELECTORS, SELECTORS } from './adapters/dom.ts'
 
 /**
  * Geometry + the office palette.
@@ -111,7 +111,6 @@ const SIDEBAR = `${SELECTORS.SIDEBAR}{`
  */
 const CONVERSATION = `body:has(.pxo-root[data-mode="top"]) ${SELECTORS.CONVERSATION}{visibility:hidden!important;}`
 	  + `body:has(.pxo-root[data-screen="off"]) ${SELECTORS.CONVERSATION}{visibility:hidden!important;}`
-	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.DETAILS}{display:none!important;}`
 	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION}{`
 	  + 'display:block!important;position:fixed!important;'
 	  + 'left:var(--pxo-sx)!important;top:var(--pxo-sy)!important;'
@@ -120,6 +119,73 @@ const CONVERSATION = `body:has(.pxo-root[data-mode="top"]) ${SELECTORS.CONVERSAT
 	  + 'box-shadow:inset 0 0 46px rgba(92,255,158,.08)!important;}'
 	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} > *{width:100%!important;height:100%!important;}`
 	  + `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.CONVERSATION} *{border-radius:0!important;font-family:var(--pxo-font)!important;}`
+
+/**
+ * The right column, and everything the docking kit draws inside it.
+ *
+ * This replaces the old `[data-slot="details"]` rule, which had been dead code
+ * since the harness deleted that slot: the right column is now the dockable
+ * `rightbar` (`[data-rightbar-col]` → `[data-sidebar-right-panel]`), whose tabs
+ * host plan / deliverables / terminal / files / document preview.
+ *
+ * Two different problems, two treatments:
+ *
+ * 1. **Docked panel** (`.panel`, `z-index:10`) sits *below* the frame's overlay
+ *    layer (20), so the opaque office backdrop already hides it. That is an
+ *    accident of z-index rather than a decision — the column is hidden
+ *    explicitly in desk mode so the CRT owns the right half, and the desk's own
+ *    chrome cannot be overlaid by a panel sliding in.
+ * 2. **Fullscreen panel** (`z-index:40`) and **floating panels**
+ *    (`[data-sidebar-right-float-host]`, `z-index:60`) both land *above* the
+ *    overlay, so they would otherwise float over the office as raw native
+ *    chrome. They are skinned as pixel slabs instead. Rules carry `!important`
+ *    because the host sets these surfaces from CSS-module classes and, for
+ *    Windows/macOS fullscreen, from `:global()` selectors of higher specificity.
+ */
+const SIDE_PANEL = `body:has(.pxo-root[data-mode="desk"]) ${SELECTORS.RIGHTBAR_COL}{visibility:hidden!important;}`
+  // ── Docked panel body.
+  + `${SELECTORS.RIGHTBAR_PANEL}{border-radius:0!important;`
+  + 'background:var(--pxo-bg2)!important;border-left:0!important;'
+  + 'box-shadow:inset 0 0 0 2px var(--pxo-edge)!important;'
+  + 'font-family:var(--pxo-font)!important;color:var(--pxo-ink)!important;}'
+  + `${SELECTORS.RIGHTBAR_PANEL} *{border-radius:0!important;font-family:var(--pxo-font)!important;}`
+  // ── Fullscreen panel: a filled office screen rather than a bare overlay.
+  + `${SELECTORS.RIGHTBAR_PANEL}[data-sidebar-right-panel="fullscreen"]{`
+  + 'background:var(--pxo-bg)!important;border:none!important;'
+  + 'box-shadow:inset 0 0 0 4px var(--pxo-edge),inset 0 0 90px rgba(92,255,158,.06)!important;}'
+  // ── Floating panels: the same slab language as the plugin's own dialogs.
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.FLOAT}{border-radius:0!important;`
+  + 'background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;'
+  + 'box-shadow:0 0 0 3px var(--pxo-edge),0 0 0 6px var(--pxo-bg),'
+  + '8px 8px 0 rgba(0,0,0,.5),0 0 30px var(--pxo-glow)!important;}'
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.FLOAT_TITLE}{`
+  + 'background:var(--pxo-bg3)!important;color:var(--pxo-neon)!important;'
+  + 'font-family:var(--pxo-font)!important;letter-spacing:2px;'
+  + 'box-shadow:inset 0 -2px 0 var(--pxo-edge)!important;}'
+  // ── Docking-kit chrome: tab strips, chips, dividers, the tab actions menu.
+  + `${SELECTORS.RIGHTBAR_PANEL} ${DOCKKIT_SELECTORS.STRIP},`
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.STRIP}{`
+  + 'background:var(--pxo-bg3)!important;box-shadow:inset 0 -2px 0 var(--pxo-edge)!important;}'
+  + `${SELECTORS.RIGHTBAR_PANEL} ${DOCKKIT_SELECTORS.TAB},`
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.TAB}{`
+  + 'background:transparent!important;color:var(--pxo-dim)!important;'
+  + 'font-family:var(--pxo-font)!important;font-size:11px!important;letter-spacing:1px;}'
+  + `${SELECTORS.RIGHTBAR_PANEL} ${DOCKKIT_SELECTORS.TAB_TITLE},`
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.TAB_TITLE}{`
+  + 'color:inherit!important;font-family:var(--pxo-font)!important;}'
+  + `${SELECTORS.RIGHTBAR_PANEL} ${DOCKKIT_SELECTORS.DIVIDER},`
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.DIVIDER}{`
+  + 'background:var(--pxo-edge)!important;}'
+  // The tab-actions menu portals to <body>, so it is not inside a panel box.
+  + `body ${DOCKKIT_SELECTORS.TAB_MENU}{border-radius:0!important;`
+  + 'background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;'
+  + 'box-shadow:inset 0 0 0 2px var(--pxo-edge),0 0 22px var(--pxo-glow),'
+  + '5px 5px 0 rgba(0,0,0,.5)!important;font-family:var(--pxo-font)!important;}'
+  // The pane body keeps the office ground so a tab never shows the host's
+  // scheme through the pixel frame.
+  + `${SELECTORS.RIGHTBAR_PANEL} ${DOCKKIT_SELECTORS.PANE},`
+  + `${SELECTORS.FLOAT_HOST} ${DOCKKIT_SELECTORS.PANE}{`
+  + 'background:var(--pxo-bg2)!important;color:var(--pxo-ink)!important;}'
 
 /**
  * Composer: the textarea is transparent (caret only); the backdrop paints the
@@ -764,14 +830,103 @@ const DIALOGS = '.pxo-modal-bg{position:fixed;inset:0;z-index:90;pointer-events:
   + 'inset -2px -2px 0 var(--pxo-neon);}'
   + '.pxo-input::placeholder{color:var(--pxo-faint);}'
   + '.pxo-row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}'
-  + '.pxo-range{width:100%;accent-color:var(--pxo-neon);}'
   + '.pxo-set-row{display:flex;justify-content:space-between;align-items:center;color:var(--pxo-ink);'
   + 'font-size:11px;letter-spacing:1px;margin-bottom:8px;}'
-  + '.pxo-preview{display:flex;gap:4px;margin-top:10px;flex-wrap:wrap;}'
-  + '.pxo-pv{background:var(--pxo-yellow);box-shadow:2px 2px 0 rgba(0,0,0,.4);}'
+  // NOTE: there is deliberately no `.pxo-preview` rule in this block. One used
+  // to live here (a swatch strip for a connector picker that no longer exists),
+  // and its `display:flex` silently overrode the hover card's own layout —
+  // defining `.pxo-preview` twice made the card render as one long row. Removed
+  // along with `.pxo-pv` and the range-slider rule: three selectors no view has
+  // referenced for a long time.
   + '.pxo-note{color:var(--pxo-dim);font-size:10px;letter-spacing:1px;line-height:1.7;margin:14px 0 0;}'
   + '.pxo-ghost{position:fixed;z-index:80;pointer-events:none;padding:7px;font-size:10px;'
   + 'font-weight:700;color:#141a24;box-shadow:4px 4px 0 rgba(0,0,0,.5);opacity:.92;overflow:hidden;}'
+
+/* ----------------------------------------------------------------------------
+ * Archive drawer: the surface the tear gesture always implied but could not
+ * reach. Slate slate, paper notes, one restore action each.
+ *
+ * Positioned `absolute` against `.pxo-board` — which is `position:fixed`, so it
+ * is already a containing block — and so it slides down over the planning board
+ * without touching the CRT's own geometry.
+ * --------------------------------------------------------------------------*/
+const ARCHIVE = // Toolbar entry point, seated on the board header's right edge.
+  '.pxo-board-hd .trail{margin-left:auto;}'
+  + '.pxo-archive-btn{display:inline-flex;align-items:center;gap:6px;margin-left:10px;'
+  + 'padding:3px 8px;background:var(--pxo-bg3);color:var(--pxo-yellow);cursor:pointer;'
+  + 'font-size:10px;font-weight:700;letter-spacing:2px;border:0;'
+  + 'box-shadow:inset 0 0 0 1px var(--pxo-yellow);}'
+  + '.pxo-archive-btn b{color:var(--pxo-bg);background:var(--pxo-yellow);'
+  + 'padding:0 4px;font-size:10px;}'
+  + '.pxo-archive-btn:hover{color:var(--pxo-ink);}'
+  + '.pxo-archive-btn.is-open{color:var(--pxo-ink);box-shadow:inset 0 0 0 1px var(--pxo-yellow),'
+  + 'inset 0 0 14px rgba(255,227,92,.24);}'
+  // The drawer box itself: same cork slate as the board, taking the grid's
+  // place inside it. Sharing the flex track with `.pxo-slots` instead of
+  // overlaying it keeps the board header — and therefore the button that closes
+  // the drawer — visible and clickable, which an `inset:0` overlay would bury.
+  + '.pxo-archive{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:12px;'
+  + 'padding:14px;background:#0c1a14;'
+  + 'box-shadow:inset 0 0 0 2px var(--pxo-edge),inset 0 0 60px rgba(0,0,0,.5);'
+  + 'animation:pxo-drawer-in .22s cubic-bezier(.16,1.05,.3,1) both;}'
+  + '.pxo-archive-hd{display:flex;align-items:center;gap:12px;'
+  + 'color:var(--pxo-yellow);font-size:12px;font-weight:700;letter-spacing:3px;'
+  + 'text-shadow:0 0 12px rgba(255,227,92,.4);'
+  + 'border-bottom:1px solid var(--pxo-edge);padding-bottom:10px;}'
+  + '.pxo-archive-hd .trail{margin-left:auto;color:var(--pxo-dim);font-size:10px;'
+  + 'font-weight:400;letter-spacing:2px;text-shadow:none;}'
+  + '.pxo-archive-close{background:var(--pxo-bg3);color:var(--pxo-dim);cursor:pointer;'
+  + 'border:0;padding:4px 9px;font-size:10px;font-weight:700;letter-spacing:2px;'
+  + 'box-shadow:inset 0 0 0 1px var(--pxo-edge);}'
+  + '.pxo-archive-close:hover{color:var(--pxo-ink);}'
+  // Paper grid: torn notes keep their board colors so a restore is recognizable.
+  + '.pxo-archive-grid{flex:1 1 auto;min-height:0;overflow:auto;'
+  + 'display:grid;gap:8px;align-content:start;'
+  + 'grid-template-columns:repeat(auto-fill,minmax(146px,1fr));}'
+  + '.pxo-archive-note{position:relative;display:flex;flex-direction:column;gap:4px;'
+  + 'padding:8px 8px 34px;min-height:82px;color:#141a24;'
+  + 'font-size:11px;line-height:1.3;font-weight:700;word-break:break-word;'
+  + 'box-shadow:2px 2px 0 rgba(0,0,0,.5),inset -2px -2px 0 rgba(0,0,0,.2),'
+  + 'inset 2px 2px 0 rgba(255,255,255,.4);'
+  // A torn note is out of play: the whole card reads a step dimmer than the
+  // board's live paper, which is also what makes the restore button pop.
+  + 'filter:saturate(.6) brightness(.86);}'
+  + '.pxo-archive-note:hover{filter:none;}'
+  + '.pxo-archive-note .idx{font-size:9px;letter-spacing:2px;opacity:.7;}'
+  + '.pxo-archive-note .lbl{flex:1;overflow:hidden;}'
+  + '.pxo-archive-restore{position:absolute;left:6px;right:6px;bottom:6px;'
+  + 'padding:4px 6px;background:#141a24;color:var(--pxo-yellow);cursor:pointer;'
+  + 'border:0;font-size:10px;font-weight:700;letter-spacing:2px;}'
+  + '.pxo-archive-restore:hover:not(:disabled){background:var(--pxo-yellow);color:#141a24;}'
+  + '.pxo-archive-restore:disabled{color:var(--pxo-faint);cursor:not-allowed;}'
+  + '.pxo-archive-empty{flex:1;display:flex;flex-direction:column;align-items:center;'
+  + 'justify-content:center;gap:8px;color:var(--pxo-dim);}'
+  + '.pxo-archive-empty .big{font-size:14px;letter-spacing:3px;color:var(--pxo-faint);}'
+  + '.pxo-archive-empty .hint{font-size:10px;letter-spacing:1px;color:var(--pxo-faint);}'
+  + '.pxo-archive-foot{display:flex;flex-direction:column;gap:2px;'
+  + 'color:var(--pxo-faint);font-size:10px;letter-spacing:1px;'
+  + 'border-top:1px solid var(--pxo-edge);padding-top:8px;}'
+
+/* ----------------------------------------------------------------------------
+ * The two hierarchical signals the host grew: subagent children and background
+ * jobs. Both are rendered only when non-zero, so an ordinary note stays clean.
+ * --------------------------------------------------------------------------*/
+const LINKS = // Sticker corner badge — sub-links owned by this session.
+  '.pxo-sticker .sub-badge{position:absolute;top:3px;right:5px;'
+  + 'padding:0 3px;font-size:9px;font-weight:700;letter-spacing:0;'
+  + 'background:rgba(20,26,36,.72);color:#bdf7ff;}'
+  + '.pxo-meta .subs{color:var(--pxo-cyan);font-weight:700;letter-spacing:1px;}'
+  + '.pxo-preview-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}'
+  + '.pxo-preview-link{padding:2px 6px;font-size:9px;font-weight:700;letter-spacing:1px;'
+  + 'background:var(--pxo-crt);box-shadow:inset 0 0 0 1px var(--pxo-edge);}'
+  + '.pxo-preview-link.sub{color:var(--pxo-cyan);}'
+  + '.pxo-preview-link.job{color:var(--pxo-orange);}'
+  + '.pxo-preview-flag{margin-left:auto;padding:1px 5px;font-size:9px;font-weight:700;'
+  + 'letter-spacing:1px;background:var(--pxo-crt);color:var(--pxo-faint);'
+  + 'box-shadow:inset 0 0 0 1px var(--pxo-edge);}'
+  + '.pxo-btn-pv.fork{color:var(--pxo-cyan);}'
+  + '.pxo-btn-pv.fork:hover{background:var(--pxo-cyan);color:var(--pxo-bg);'
+  + 'border-color:var(--pxo-cyan);}'
 
 /* ----------------------------------------------------------------------------
  * Toast: the transient status line the scene raises for workspace/session work.
@@ -978,8 +1133,6 @@ const SETTINGS = '.pxo-settings{display:flex;flex-direction:column;gap:14px;'
   + '.pxo-toggle[aria-pressed="true"] > span::after{left:18px;background:var(--pxo-neon);'
   + 'box-shadow:0 0 10px var(--pxo-neon);}'
   + '.pxo-toggle:hover{color:var(--pxo-ink);}'
-  // The swatch strip under the toggle.
-  + '.pxo-preview .pxo-pv{width:26px;height:14px;}'
 
 /* ----------------------------------------------------------------------------
  * States the views emit that previously had no matching rule: the active
@@ -1068,6 +1221,8 @@ const MOTION = // Staggered desk arrival: each tile carries --pxo-i from the vie
   + '.pxo-root[data-intensity="calm"] .pxo-standby .cursor{animation:none;}'
   + '.pxo-root[data-intensity="calm"] .pxo-settings-hero::after{animation:none;}'
   + '.pxo-root[data-intensity="calm"] .pxo-logo-square{animation:none;}'
+  // The drawer still opens, it just arrives without the slide.
+  + '.pxo-root[data-intensity="calm"] .pxo-archive{animation:none;}'
   // ── OVERDRIVE: push the ambient layers harder.
   + '.pxo-root[data-intensity="overdrive"] .pxo-sky{opacity:.72;}'
   + '.pxo-root[data-intensity="overdrive"] .pxo-grid-floor{opacity:.62;'
@@ -1133,6 +1288,10 @@ const KEYFRAMES = '@keyframes pxo-blink{0%,49%{opacity:1}50%,100%{opacity:.25}}'
   + '@keyframes pxo-fade{0%{opacity:0}100%{opacity:1}}'
   + '@keyframes pxo-toast-in{0%{opacity:0;transform:translate(-50%,14px)}'
   + '100%{opacity:1;transform:translate(-50%,0)}}'
+  // Archive drawer: drops down from the board header, stepped so it reads as a
+  // panel being pulled out of the slate rather than a soft sheet.
+  + '@keyframes pxo-drawer-in{0%{opacity:0;transform:translateY(-14px)}'
+  + '100%{opacity:1;transform:translateY(0)}}'
   + '@keyframes pxo-pulse{0%,100%{opacity:1;box-shadow:0 0 10px var(--pxo-neon)}'
   + '50%{opacity:.5;box-shadow:0 0 4px var(--pxo-neon)}}'
   + '@keyframes pxo-sheen{0%,100%{transform:translateX(0) rotate(18deg)}'
@@ -1165,9 +1324,9 @@ const REVEAL =
   + 'to{opacity:0;transform:scale(.12)}}'
 
 export const CSS: string = [
-  GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER,
+  GEOMETRY, SIDEBAR, CONVERSATION, COMPOSER, SIDE_PANEL,
   ROOT, BACKDROP, CHROME, GRID, STATION, PLATE, EMPTY_CTA, CAPTION,
-  DESK_CHROME, BEZEL, STANDBY, BOARD, STICKY, PREVIEW, STACK, DIALOGS,
+  DESK_CHROME, BEZEL, STANDBY, BOARD, ARCHIVE, STICKY, PREVIEW, LINKS, STACK, DIALOGS,
   TOAST, SETTINGS, STATES, MOTION, REVEAL,
   KEYFRAMES,
 ].join('\n')
